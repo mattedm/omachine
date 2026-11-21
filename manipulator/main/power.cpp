@@ -378,6 +378,8 @@ float power_motor_supply_volts()
   return motorSupply;
 }
 
+#define USB_RELEASE_WAIT_MS 2000   // on USB, restart after this even if the button still reads pressed
+
 static void powerOff()
 {
   ESP_LOGI(TAG, "Powering off");
@@ -387,8 +389,22 @@ static void powerOff()
 
   // The button itself keeps the regulator on until it is let go, then the power goes. On USB,
   // restart instead, which comes up on the charging screen since the button is no longer held.
+  // On USB, don't wait for ever: a button line that kept reading pressed left the board stuck on
+  // "Turning off" (Nov 2026). Restarting with it still pressed is safe: a press held at start-up
+  // is ignored, so it can't turn the board off again.
+  int waitedMs = 0;
   while (autoButton.pressed) {
+    if (waitedMs % 1000 == 0) {
+      ESP_LOGW(TAG, "Waiting for the button to be let go (line %s, USB %s)",
+               gpio_get_level(BUTTON_PIN) == 0 ? "pressed" : "released", onUsbPower() ? "yes" : "no");
+    }
+    if (onUsbPower() && waitedMs >= USB_RELEASE_WAIT_MS) {
+      ESP_LOGW(TAG, "Button still pressed after %d ms on USB: restarting anyway", waitedMs);
+      vTaskDelay(pdMS_TO_TICKS(50));   // let the log out
+      esp_restart();
+    }
     vTaskDelay(pdMS_TO_TICKS(POWER_TASK_PERIOD_MS));
+    waitedMs += POWER_TASK_PERIOD_MS;
   }
   if (onUsbPower()) {
     esp_restart();
@@ -464,8 +480,26 @@ static void powerTask(void *parameters)
       faultSamples = 0;
     }
 
+    // Log the main button, to tell real presses from a line that reads pressed by itself
+    static bool lastPressed = false;
+    static int64_t pressedAtUs = 0;
+    bool pressed = autoButton.pressed;
+    if (pressed != lastPressed) {
+      int64_t now = esp_timer_get_time();
+      if (pressed) {
+        pressedAtUs = now;
+        ESP_LOGI(TAG, "Main button pressed (line %s, USB %s)", gpio_get_level(BUTTON_PIN) == 0 ? "low" : "high",
+                 onUsbPower() ? "yes" : "no");
+      } else {
+        ESP_LOGI(TAG, "Main button released after %lld ms", (long long)((now - pressedAtUs) / 1000));
+      }
+      lastPressed = pressed;
+    }
+
     if (powerOffRequested) {
       powerOffRequested = false;
+      ESP_LOGW(TAG, "Main button held %d ms: turning off (line %s, USB %s)", POWER_OFF_HOLD_MS,
+               gpio_get_level(BUTTON_PIN) == 0 ? "pressed" : "released", onUsbPower() ? "yes" : "no");
       powerOff();
     }
 
