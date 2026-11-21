@@ -219,7 +219,7 @@ static const odrive_setting_t odrive_settings[ODRIVE_SETTING_COUNT] = {
     {371, ODRIVE_T_FLOAT, 0x3fb33333u, "axis0.controller.config.vel_gain"},   // 1.399999976158142
     {372, ODRIVE_T_FLOAT, 0x00000000u, "axis0.controller.config.vel_integrator_gain"},   // 0.0
     {373, ODRIVE_T_FLOAT, 0x7f800000u, "axis0.controller.config.vel_integrator_limit"},   // inf
-    {374, ODRIVE_T_FLOAT, 0x40a00000u, "axis0.controller.config.vel_limit"},   // 5.0
+    {374, ODRIVE_T_FLOAT, 0x41200000u, "axis0.controller.config.vel_limit"},   // 10.0
     {375, ODRIVE_T_FLOAT, 0x3f99999au, "axis0.controller.config.vel_limit_tolerance"},   // 1.2000000476837158
     {376, ODRIVE_T_FLOAT, 0x41200000u, "axis0.controller.config.vel_ramp_rate"},   // 10.0
     {377, ODRIVE_T_FLOAT, 0x3c23d70au, "axis0.controller.config.torque_ramp_rate"},   // 0.009999999776482582

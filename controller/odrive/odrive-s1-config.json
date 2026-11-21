@@ -194,7 +194,7 @@
   "axis0.controller.config.vel_gain": 1.399999976158142,
   "axis0.controller.config.vel_integrator_gain": 0.0,
   "axis0.controller.config.vel_integrator_limit": Infinity,
-  "axis0.controller.config.vel_limit": 5.0,
+  "axis0.controller.config.vel_limit": 10.0,
   "axis0.controller.config.vel_limit_tolerance": 1.2000000476837158,
   "axis0.controller.config.vel_ramp_rate": 10.0,
   "axis0.controller.config.torque_ramp_rate": 0.009999999776482582,

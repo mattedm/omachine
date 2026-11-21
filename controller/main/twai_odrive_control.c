@@ -85,7 +85,7 @@ static const char *TAG = "odrive-control";
 #define SYNC_TOLERANCE  OM_SYNC_TOLERANCE   // "matched" = within 2% of the stroke span (shared with the manipulator)
 #define STROKE_CHANGE_SPEED 0.5f  // move to a new stroke's start at this many stroke spans per second
 // ODrive limits, sent with Set_Limits whenever the manipulator's Power setting changes
-#define VEL_LIMIT           5.0f  // rev/s, as axis0.controller.config.vel_limit
+#define VEL_LIMIT           10.0f // rev/s, as axis0.controller.config.vel_limit
 #define MAX_CURRENT_A       20.0f // Power 100% = this many amps
 #define MIN_CURRENT_A       2.0f  // floor, so low Power never leaves the ODrive limp
 #define MANUAL_EASE_SPEED   0.2f  // on entering MANUAL, move the target from the hold position at this many spans per second
