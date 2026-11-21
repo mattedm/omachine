@@ -77,7 +77,7 @@ static bool displayedHandleBattery = false;   // false: nothing on J9
 static bool displayedHandleCharging = false;
 static uint8_t displayedOdriveError = OM_ODRIVE_ERROR_NONE;
 
-static const char *strokes[] = {"Jack","Pulse","Pump","Classic","Tease","Crescendo","Slow In","Heartbeat","Breathing","Wander","Pendulum"};   // order of stroke_id_t in omachine-controller
+static const char *strokes[] = {"Jack","Pulse","Pump","Classic","Tease","Crescendo","Slow In","Heartbeat","Breathing","Wander","Pendulum","Bounce","Spring","Lorenz","Gallop","Swing","Ramp Up","Flutter","Waves"};   // order of stroke_id_t in omachine-controller
 
 static const char *machinestates[OM_STATE_COUNT] = {"Initializing","Homing","Syncing","Manual","Auto","Starting","Link lost","Setting up","ODrive fault"};   // indexed by OM_STATE_*
 
