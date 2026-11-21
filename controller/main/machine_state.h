@@ -89,6 +89,7 @@ typedef enum {
     STROKE_HEARTBEAT,
     STROKE_BREATHING,
     STROKE_WANDER,
+    STROKE_PENDULUM,
     STROKE_COUNT
 } stroke_id_t;
 

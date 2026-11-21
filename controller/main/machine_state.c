@@ -3,6 +3,7 @@
 
 #include "machine_state.h"
 #include "odrive_setup.h"
+#include "stroke_pendulum_table.h"
 
 #include <math.h>
 #include <string.h>
@@ -126,6 +127,23 @@ static float stroke_wander(uint32_t millis, float length)
     return length * d;
 }
 
+// A double pendulum's lower bob, swinging side to side: irregular swings and flicks, as a seamless
+// 20 s loop from tools/gen_pendulum_stroke.py, smoothly interpolated (Catmull-Rom) between samples
+static float stroke_pendulum(uint32_t millis, float length)
+{
+    const uint32_t loop_ms = PENDULUM_SAMPLES * 1000u / PENDULUM_RATE_HZ;
+    float pos = (float)(millis % loop_ms) * PENDULUM_RATE_HZ / 1000.0f;
+    int i = (int)pos;
+    float f = pos - (float)i;
+    float p0 = pendulum_samples[(i + PENDULUM_SAMPLES - 1) % PENDULUM_SAMPLES];
+    float p1 = pendulum_samples[i % PENDULUM_SAMPLES];
+    float p2 = pendulum_samples[(i + 1) % PENDULUM_SAMPLES];
+    float p3 = pendulum_samples[(i + 2) % PENDULUM_SAMPLES];
+    float d = 0.5f * (2.0f * p1 + (p2 - p0) * f + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * f * f +
+                      (3.0f * (p1 - p2) + p3 - p0) * f * f * f) / 32767.0f;
+    return length * fminf(fmaxf(d, 0.0f), 1.0f);   // the curve can overshoot a sample a little
+}
+
 typedef float (*stroke_fn_t)(uint32_t millis, float length);
 
 typedef struct {
@@ -144,6 +162,7 @@ static const stroke_entry_t s_strokes[STROKE_COUNT] = {
     [STROKE_HEARTBEAT] = {"Heartbeat", stroke_heartbeat},
     [STROKE_BREATHING] = {"Breathing", stroke_breathing},
     [STROKE_WANDER] = {"Wander", stroke_wander},
+    [STROKE_PENDULUM] = {"Pendulum", stroke_pendulum},
 };
 
 machine_element_t g_machine_elements[ELEMENT_COUNT] = {
