@@ -1,0 +1,24 @@
+# ESP32-S3-MINI-1-N8 (8 MB quad flash, no PSRAM)
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+# Two app slots for over-the-air updates (partitions.csv), with rollback to the previous image
+# if a new one doesn't get marked good (firmware_valid.c)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+# Lets OM_UPDATE_URL be a plain http:// address too, for testing updates from a local server
+CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=y
+
+# The console and flashing go through the native USB port: UART0's pins drive the display
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# 1 ms ticks, so vTaskDelay(1) in the motor loop is 1 ms as on Arduino
+CONFIG_FREERTOS_HZ=1000
+
+# The end-stop search and FOC loop keep core 1 busy; like Arduino, don't watch its idle task
+# CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1 is not set

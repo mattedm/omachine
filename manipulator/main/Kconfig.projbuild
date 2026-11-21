@@ -1,0 +1,11 @@
+menu "omachine manipulator"
+
+config OM_UPDATE_URL
+    string "Firmware update download URL"
+    default "https://github.com/mattedm/omachine/releases/latest/download"
+    help
+        Where the menu's "Update firmware" fetches manipulator.bin and controller.bin, with no
+        trailing slash. For a GitHub repository, its latest release's download URL:
+        https://github.com/<owner>/<repo>/releases/latest/download
+
+endmenu

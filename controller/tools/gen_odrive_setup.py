@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 MattEdm
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Generate main/odrive_setup_table.h from the ODrive's saved configuration.
+
+The manipulator's "Set up ODrive" has the controller write every setting in
+odrive/odrive-s1-config.json to the ODrive over CAN (SDO by endpoint ID), so the
+ODrive's configuration comes from that one file. Endpoint IDs are specific to a
+firmware version: they come from odrive/odrive-s1-endpoints-<fw>.json.
+
+Run from the repository root after changing either file:
+
+    python3 tools/gen_odrive_setup.py
+"""
+import json
+import math
+import os
+import re
+import struct
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CONFIG = os.path.join(ROOT, 'odrive', 'odrive-s1-config.json')
+ENDPOINTS = os.path.join(ROOT, 'odrive', 'odrive-s1-endpoints-0.6.11.json')
+OUT = os.path.join(ROOT, 'main', 'odrive_setup_table.h')
+
+# Left as they are on the ODrive:
+SKIP = {
+    # CAN identity: the controller is talking to the ODrive with these, and a change only takes
+    # effect after a reboot, where it would cut the controller off
+    'can.config.baud_rate', 'can.config.data_baud_rate', 'can.config.tx_brs', 'can.config.protocol',
+    'axis0.config.can.node_id',
+}
+SKIP_TYPES = {'endpoint_ref', 'uint64'}   # don't fit an SDO frame (GPIO mappings, gate driver config)
+
+# Calibration results: written as not valid, so a calibration that doesn't finish can't leave the
+# old values marked good. The motor calibration measures them again.
+INVALIDATE = {
+    'axis0.config.motor.phase_resistance_valid',
+    'axis0.config.motor.phase_inductance_valid',
+    'axis0.commutation_mapper.config.offset_valid',
+}
+
+# Settings the setup changes on the way (calibration gains, faster heartbeats, the mode the
+# anticogging calibration leaves behind); written again from the file before saving
+RESTORE = [
+    'axis0.controller.config.pos_gain',
+    'axis0.controller.config.vel_gain',
+    'axis0.controller.config.vel_integrator_gain',
+    'axis0.controller.config.control_mode',
+    'axis0.controller.config.input_mode',
+    'axis0.controller.config.input_filter_bandwidth',
+    'axis0.controller.config.vel_limit',
+    'axis0.config.anticogging.enabled',
+    'axis0.config.can.heartbeat_msg_rate_ms',
+]
+
+# Endpoints the setup uses by name
+NAMED = {
+    'EP_POS_ESTIMATE': 'axis0.pos_estimate',
+    'EP_ONBOARD_ENCODER_RAW': 'onboard_encoder0.raw',
+    'EP_POS_GAIN': 'axis0.controller.config.pos_gain',
+    'EP_VEL_GAIN': 'axis0.controller.config.vel_gain',
+    'EP_VEL_INTEGRATOR_GAIN': 'axis0.controller.config.vel_integrator_gain',
+    'EP_HEARTBEAT_RATE_MS': 'axis0.config.can.heartbeat_msg_rate_ms',
+    'EP_CAN_BAUD_RATE': 'can.config.baud_rate',
+    'EP_CAN_NODE_ID': 'axis0.config.can.node_id',
+}
+
+TYPES = {  # endpoint type -> (C enum, struct format)
+    'bool': ('ODRIVE_T_BOOL', '<?'), 'uint8': ('ODRIVE_T_U8', '<B'), 'int8': ('ODRIVE_T_I8', '<b'),
+    'uint16': ('ODRIVE_T_U16', '<H'), 'int16': ('ODRIVE_T_I16', '<h'),
+    'uint32': ('ODRIVE_T_U32', '<I'), 'int32': ('ODRIVE_T_I32', '<i'), 'float': ('ODRIVE_T_FLOAT', '<f'),
+}
+
+
+def load_config(path):
+    # odrivetool writes bare Infinity and NaN, which strict JSON rejects
+    txt = open(path).read()
+    txt = re.sub(r'-Infinity\b', '"-inf"', txt)
+    txt = re.sub(r'(?<![-\w"])Infinity\b', '"inf"', txt)
+    txt = re.sub(r'(?<![\w"])NaN\b', '"nan"', txt)
+    return json.loads(txt)
+
+
+def value_bits(etype, value):
+    if isinstance(value, str):
+        value = float(value)
+    if etype == 'float':
+        raw = struct.pack('<f', value)
+    elif etype == 'bool':
+        raw = struct.pack('<?', bool(value))
+    else:
+        raw = struct.pack(TYPES[etype][1], int(value))
+    return int.from_bytes(raw.ljust(4, b'\0'), 'little')
+
+
+def main():
+    config = load_config(CONFIG)
+    ep_file = json.load(open(ENDPOINTS))
+    endpoints = ep_file['endpoints']
+    fw = [int(x) for x in ep_file['fw_version'].split('.')]
+    hw = [int(x) for x in ep_file['hw_version'].split('.')]
+
+    rows, skipped = [], []
+    for path, value in config.items():
+        ep = endpoints.get(path)
+        if ep is None:
+            sys.exit(f'{path}: not an endpoint of firmware {ep_file["fw_version"]}')
+        if path in SKIP or ep['type'] in SKIP_TYPES:
+            skipped.append(path)
+            continue
+        if ep['access'] != 'rw':
+            sys.exit(f'{path}: not writable')
+        if path in INVALIDATE:
+            value = False
+        rows.append((path, ep['id'], ep['type'], value))
+    index = {path: i for i, (path, _, _, _) in enumerate(rows)}
+    for path in RESTORE:
+        if path not in index:
+            sys.exit(f'{path}: in RESTORE but not written')
+
+    out = []
+    out.append('// SPDX-FileCopyrightText: 2026 MattEdm')
+    out.append('// SPDX-License-Identifier: GPL-3.0-or-later')
+    out.append('// GENERATED by tools/gen_odrive_setup.py from odrive/odrive-s1-config.json and')
+    out.append(f'// odrive/{os.path.basename(ENDPOINTS)}. Don\'t edit; regenerate.')
+    out.append('#pragma once')
+    out.append('')
+    out.append('#include <stdint.h>')
+    out.append('')
+    out.append('typedef enum { ODRIVE_T_BOOL, ODRIVE_T_U8, ODRIVE_T_I8, ODRIVE_T_U16, ODRIVE_T_I16, ODRIVE_T_U32, '
+               'ODRIVE_T_I32, ODRIVE_T_FLOAT } odrive_type_t;')
+    out.append('')
+    out.append('typedef struct {')
+    out.append('    uint16_t id;          // endpoint ID')
+    out.append('    uint8_t type;         // odrive_type_t')
+    out.append('    uint32_t bits;        // the value, little-endian in the low bytes')
+    out.append('    const char *path;')
+    out.append('} odrive_setting_t;')
+    out.append('')
+    out.append(f'#define ODRIVE_SETUP_FW_MAJOR {fw[0]}')
+    out.append(f'#define ODRIVE_SETUP_FW_MINOR {fw[1]}')
+    out.append(f'#define ODRIVE_SETUP_FW_REVISION {fw[2]}')
+    out.append(f'#define ODRIVE_SETUP_HW_PRODUCT_LINE {hw[0]}')
+    out.append(f'#define ODRIVE_SETUP_HW_VERSION {hw[1]}')
+    out.append(f'#define ODRIVE_SETUP_HW_VARIANT {hw[2]}')
+    out.append('')
+    for name, path in NAMED.items():
+        ep = endpoints[path]
+        out.append(f'#define {name} {ep["id"]}   // {path} ({ep["type"]})')
+    out.append('')
+    out.append(f'#define ODRIVE_SETTING_COUNT {len(rows)}')
+    out.append('static const odrive_setting_t odrive_settings[ODRIVE_SETTING_COUNT] = {')
+    for path, eid, etype, value in rows:
+        shown = value if not isinstance(value, float) or math.isfinite(value) else str(value)
+        out.append(f'    {{{eid}, {TYPES[etype][0]}, 0x{value_bits(etype, value):08x}u, "{path}"}},   // {shown}')
+    out.append('};')
+    out.append('')
+    out.append('// Indexes into odrive_settings[] of the settings written again before saving')
+    out.append(f'#define ODRIVE_RESTORE_COUNT {len(RESTORE)}')
+    out.append('static const uint16_t odrive_restore[ODRIVE_RESTORE_COUNT] = {')
+    for path in RESTORE:
+        out.append(f'    {index[path]},   // {path}')
+    out.append('};')
+    out.append('')
+    out.append('// Not written (left as they are on the ODrive):')
+    for path in skipped:
+        out.append(f'//   {path}')
+    out.append('')
+    open(OUT, 'w').write('\n'.join(out))
+    print(f'{OUT}: {len(rows)} settings, {len(skipped)} skipped')
+
+
+if __name__ == '__main__':
+    main()

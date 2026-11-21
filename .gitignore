@@ -1,0 +1,4 @@
+# Editor settings: local paths, kept out of the repository
+.vscode/
+
+# Each project's own .gitignore covers its build output (controller/, manipulator/)

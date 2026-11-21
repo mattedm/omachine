@@ -1,0 +1,8 @@
+## IDF Component Manager Manifest File
+dependencies:
+  idf:
+    version: '>=6.0.0'
+  lovyangfx:   # TFT_eSPI-style graphics, not on the component registry
+    git: https://github.com/lovyan03/LovyanGFX.git
+    version: e2cc321544fd4e2b6d02f613f3b8555210d2c690
+  espressif/esp_simplefoc: "^1.4.1"   # SimpleFOC (espressif/arduino-foc) with ESP-IDF drivers
