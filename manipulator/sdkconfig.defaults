@@ -22,3 +22,6 @@ CONFIG_FREERTOS_HZ=1000
 
 # The end-stop search and FOC loop keep core 1 busy; like Arduino, don't watch its idle task
 # CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1 is not set
+
+# A task stuck for CONFIG_ESP_TASK_WDT_TIMEOUT_S restarts the chip instead of only logging it
+CONFIG_ESP_TASK_WDT_PANIC=y
