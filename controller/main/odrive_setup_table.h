@@ -38,9 +38,9 @@ static const odrive_setting_t odrive_settings[ODRIVE_SETTING_COUNT] = {
     {158, ODRIVE_T_U8, 0x00000003u, "config.usb_cdc_protocol"},   // 3
     {159, ODRIVE_T_U8, 0x00000003u, "config.uart0_protocol"},   // 3
     {160, ODRIVE_T_FLOAT, 0x00000000u, "config.max_regen_current"},   // 0.0
-    {161, ODRIVE_T_FLOAT, 0x41280000u, "config.dc_bus_undervoltage_trip_level"},   // 10.5
+    {161, ODRIVE_T_FLOAT, 0x41980000u, "config.dc_bus_undervoltage_trip_level"},   // 19.0
     {162, ODRIVE_T_FLOAT, 0x41f00000u, "config.dc_bus_overvoltage_trip_level"},   // 30.0
-    {163, ODRIVE_T_FLOAT, 0x7f800000u, "config.dc_max_positive_current"},   // inf
+    {163, ODRIVE_T_FLOAT, 0x41a00000u, "config.dc_max_positive_current"},   // 20.0
     {164, ODRIVE_T_FLOAT, 0xbc23d70au, "config.dc_max_negative_current"},   // -0.009999999776482582
     {165, ODRIVE_T_U32, 0x00000000u, "config.user_config_0"},   // 0
     {166, ODRIVE_T_U32, 0x00000000u, "config.user_config_1"},   // 0
