@@ -1,0 +1,20 @@
+{
+	// Open this (File > Open Workspace from File) rather than the omachine folder. The controller and
+	// manipulator are separate ESP-IDF projects, each with its own build/compile_commands.json, and
+	// opening them as separate folders gives each file the right one. Build a project once
+	// (idf.py build) before IntelliSense can use it.
+	"folders": [
+		{ "name": "controller", "path": "controller" },
+		{ "name": "manipulator", "path": "manipulator" },
+		{ "name": "docs", "path": "docs" }
+	],
+	"settings": {
+		// ${workspaceFolder} is each project's own folder here
+		"C_Cpp.intelliSenseEngine": "default",
+		"C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+		"files.exclude": { "**/build": true, "**/managed_components": true }
+	},
+	"extensions": {
+		"recommendations": ["espressif.esp-idf-extension", "ms-vscode.cpptools"]
+	}
+}
