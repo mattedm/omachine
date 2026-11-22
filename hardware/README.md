@@ -1,13 +1,16 @@
 # omachine hardware
 
-The physical design of the omachine: circuit boards (KiCad) and, to come, the mechanical parts
-(FreeCAD). The firmware is in [`controller/`](../controller) and [`manipulator/`](../manipulator).
+The physical design of the omachine: the circuit board (KiCad) and the mechanical parts (FreeCAD). The firmware is in [`controller/`](../controller) and [`manipulator/`](../manipulator).
 
 | Folder | What | Tool |
 |---|---|---|
 | [`pcb/manipulator/`](pcb/manipulator) | The handle's board: ESP32-S3-MINI-1, DRV8311 gimbal motor driver, 1S battery charger, connectors for the display, encoder, knob and button | KiCad 9 |
-| `cad/manipulator/` | The handle (to come) | FreeCAD |
-| `cad/machine/` | The main machine (to come) | FreeCAD |
+| [`cad/manipulator/`](cad/manipulator) | The handle: `manipulator.FCStd` | FreeCAD 1.1 |
+| [`cad/machine/`](cad/machine) | The main machine: `omachine.FCStd` | FreeCAD 1.1 |
+
+The FreeCAD files are stored with [Git LFS](https://git-lfs.com/). Install it (and run
+`git lfs install` once) before cloning, or the `.FCStd` files arrive as small text pointers
+instead of models; in a clone made without it, `git lfs pull` fetches them.
 
 ## The manipulator board
 
