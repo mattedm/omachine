@@ -1,0 +1,30 @@
+# Kept locally, not in the repository
+
+# KiCad: backups, autosaves, per-user state and caches
+*-backups/
+_autosave-*
+*.kicad_prl
+fp-info-cache
+*.kicad_sch-bak
+*.kicad_pcb-bak
+*.bak
+*.lck
+~*.lck
+\#auto_saved_files#
+
+# KiCad: exports that can be made again, and old production runs (the current one is kept)
+pcb/*/production/old-*/
+pcb/*/production/backups/
+pcb/*/3d-export/
+pcb/*/*.step
+
+# 3D models: most are embedded in the .kicad_pcb; keep only the ones it refers to by file
+pcb/manipulator/3dmodels/*
+!pcb/manipulator/3dmodels/USB_C_SHOU_HAN_TYPE-C-16PIN-2MD-073.step
+
+# Scratch images from design work
+pcb/manipulator/u1_mode_trace.png
+
+# FreeCAD backups
+*.FCBak
+*.FCStd1

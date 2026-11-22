@@ -6,6 +6,7 @@
 	"folders": [
 		{ "name": "controller", "path": "controller" },
 		{ "name": "manipulator", "path": "manipulator" },
+		{ "name": "hardware", "path": "hardware" },
 		{ "name": "docs", "path": "docs" }
 	],
 	"settings": {
