@@ -88,6 +88,19 @@ static const char *TAG = "odrive-control";
 #define VEL_LIMIT           10.0f // rev/s, as axis0.controller.config.vel_limit
 #define MAX_CURRENT_A       20.0f // Power 100% = this many amps
 #define MIN_CURRENT_A       2.0f  // floor, so low Power never leaves the ODrive limp
+// Homing: drive slowly into each end of the rail at a low current; an end is reached once the
+// position stops moving (as the manipulator finds its end stops). The ends, less HOMING_BACKOFF,
+// become the stroke's span.
+#define HOMING_SPEED        1.0f   // turns/s
+#define HOMING_CURRENT_A    8.0f   // moves the carriage up a vertical rail (about 1.6 A holds it there); 4 A stalled on the way
+#define HOMING_LEAD         0.2f   // the target runs at most this far (turns) ahead of the carriage
+#define HOMING_CHECK_MS     300    // how often movement is checked
+#define HOMING_STALL_TURNS  0.01f  // moved less than this in HOMING_CHECK_MS: at the end
+#define HOMING_SETTLE_MS    500    // let it get going before checking for a stall
+#define HOMING_MAX_TURNS    40.0f  // no end within this: the carriage isn't on the rail (or the belt is off)
+#define HOMING_MIN_TRAVEL   1.0f   // ends closer than this (turns): it never really moved
+#define HOMING_BACKOFF      0.1f   // keep this far (turns) inside each end
+#define HOMING_FALLBACK     0.5f   // homing failed: a span this far (turns) either side of where it is
 #define MANUAL_EASE_SPEED   0.2f  // on entering MANUAL, move the target from the hold position at this many spans per second
 // MANUAL: the target goes this share of the way from the ODrive to the handle on each pass. Below 1
 // it's soft, but the lag is the ODrive's own (about 20 ms) divided by it: 0.5 measured 38 ms.
@@ -670,6 +683,83 @@ static bool send_gains(float stiffness)
 }
 #endif
 
+// Drive towards one end (dir +1 or -1) until the carriage stops; *end gets where it stopped.
+// False if it ran HOMING_MAX_TURNS without stopping, or the ODrive left closed loop.
+static bool homing_find_end(twai_node_handle_t node, float dir, float *end)
+{
+    const float start = EncoderEstimate;
+    float target = start;
+    float last_pos = start;
+    TickType_t begun = xTaskGetTickCount(), last_check = begun;
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+        float pos = EncoderEstimate;
+        if (AxisStatus != CLOSED_LOOP_CONTROL) {
+            ESP_LOGE(TAG, "Homing: the ODrive left closed loop (errors 0x%" PRIx32 ")", AxisError);
+            return false;
+        }
+        if (fabsf(pos - start) > HOMING_MAX_TURNS) {
+            set_position(node, pos);
+            ESP_LOGE(TAG, "Homing: no end after %.0f turns: is the carriage on the rail?", HOMING_MAX_TURNS);
+            return false;
+        }
+        target += dir * HOMING_SPEED * 0.01f;
+        if (dir * (target - pos) > HOMING_LEAD) {
+            target = pos + dir * HOMING_LEAD;   // pushing against the end: don't wind up far ahead
+        }
+        set_position(node, target);
+        TickType_t now = xTaskGetTickCount();
+        if (now - last_check >= pdMS_TO_TICKS(HOMING_CHECK_MS)) {
+            bool settled = now - begun >= pdMS_TO_TICKS(HOMING_SETTLE_MS);
+            if (settled && fabsf(pos - last_pos) < HOMING_STALL_TURNS) {
+                set_position(node, pos);   // stop pushing
+                *end = pos;
+                return true;
+            }
+            last_pos = pos;
+            last_check = now;
+        }
+    }
+}
+
+// Find both ends of the rail and set the stroke's span (EncoderContracted..EncoderExtended) inside
+// them: the contracted end first, then the extended end, where it stays (fully retracted on the
+// machine). If that fails, a small span around where it is.
+static void odrive_home(twai_node_handle_t node)
+{
+    while (!set_limits(node, HOMING_SPEED * 2.0f, HOMING_CURRENT_A)) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    float high = 0.0f, low = 0.0f;
+    bool ok = homing_find_end(node, -1.0f, &low);
+    if (ok) {
+        ESP_LOGW(TAG, "Homing: contracted end at %.3f", low);
+        vTaskDelay(pdMS_TO_TICKS(200));
+        ok = homing_find_end(node, +1.0f, &high);
+    }
+    if (ok) {
+        ESP_LOGW(TAG, "Homing: extended end at %.3f", high);
+        if (high - low < HOMING_MIN_TRAVEL) {
+            ESP_LOGE(TAG, "Homing: ends only %.3f turns apart: it didn't move (stuck, or too little current)", high - low);
+            ok = false;
+        }
+    }
+    if (ok) {
+        EncoderContracted = low + HOMING_BACKOFF;
+        EncoderExtended = high - HOMING_BACKOFF;
+        set_position(node, EncoderExtended);   // off the end stop
+        ESP_LOGW(TAG, "Homing: rail %.3f turns, stroke span %.3f..%.3f", high - low, EncoderContracted, EncoderExtended);
+    } else {
+        float here = EncoderEstimate;
+        EncoderContracted = here - HOMING_FALLBACK;
+        EncoderExtended = here + HOMING_FALLBACK;
+        set_position(node, here);
+        ESP_LOGE(TAG, "Homing failed: using %.3f..%.3f around where it is", EncoderContracted, EncoderExtended);
+    }
+    EncoderExtensionsDone = true;
+    vTaskDelay(pdMS_TO_TICKS(300));   // let it settle off the stop
+}
+
 // Sender task function
 void odrive_task(void *pvParameters) {
     twai_node_handle_t node = (twai_node_handle_t)pvParameters;
@@ -719,16 +809,12 @@ void odrive_task(void *pvParameters) {
     request_state_event(BUTTON_ODRIVE_RECOVERED);   // back to INITIAL, if the start-up had a fault shown
     request_state_event(BUTTON_HOMING_STARTED);
 
-    // Send position setpoints in a loop
+    // Wait for a position, then find the ends of the rail
     if (xSemaphoreTake(EncoderEstimate_semaphore, -1) == pdTRUE) {
         initial_position = EncoderEstimate;
-        // Temporary hack to set extended and contracted positions
-        EncoderExtended = initial_position + 0.5; // 0.5 rad extension
-        EncoderContracted = initial_position - 0.5; // 0.5 rad contraction
-        EncoderExtensionsDone = true;
         ESP_LOGI(TAG, "Initial Encoder Position: %f", initial_position);
     }
-    vTaskDelay(pdMS_TO_TICKS(1000)); // Wait 1 second to simulate homing delay
+    odrive_home(node);
 
     request_state_event(BUTTON_HOMING_DONE);
 
