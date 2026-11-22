@@ -166,7 +166,7 @@ static const odrive_setting_t odrive_settings[ODRIVE_SETTING_COUNT] = {
     {302, ODRIVE_T_BOOL, 0x00000000u, "axis0.config.motor.motor_model_l_dq_valid"},   // False
     {303, ODRIVE_T_FLOAT, 0x41200000u, "axis0.config.motor.calibration_current"},   // 10.0
     {304, ODRIVE_T_FLOAT, 0x40000000u, "axis0.config.motor.resistance_calib_max_voltage"},   // 2.0
-    {305, ODRIVE_T_FLOAT, 0x41a00000u, "axis0.config.motor.current_soft_max"},   // 20.0
+    {305, ODRIVE_T_FLOAT, 0x42200000u, "axis0.config.motor.current_soft_max"},   // 40.0
     {306, ODRIVE_T_FLOAT, 0x42a00000u, "axis0.config.motor.current_hard_max"},   // 80.0
     {307, ODRIVE_T_FLOAT, 0x461c4000u, "axis0.config.motor.current_slew_rate_limit"},   // 10000.0
     {308, ODRIVE_T_BOOL, 0x00000000u, "axis0.config.motor.fw_enable"},   // False
@@ -219,7 +219,7 @@ static const odrive_setting_t odrive_settings[ODRIVE_SETTING_COUNT] = {
     {371, ODRIVE_T_FLOAT, 0x3fb33333u, "axis0.controller.config.vel_gain"},   // 1.399999976158142
     {372, ODRIVE_T_FLOAT, 0x00000000u, "axis0.controller.config.vel_integrator_gain"},   // 0.0
     {373, ODRIVE_T_FLOAT, 0x7f800000u, "axis0.controller.config.vel_integrator_limit"},   // inf
-    {374, ODRIVE_T_FLOAT, 0x41200000u, "axis0.controller.config.vel_limit"},   // 10.0
+    {374, ODRIVE_T_FLOAT, 0x41700000u, "axis0.controller.config.vel_limit"},   // 15.0
     {375, ODRIVE_T_FLOAT, 0x3f99999au, "axis0.controller.config.vel_limit_tolerance"},   // 1.2000000476837158
     {376, ODRIVE_T_FLOAT, 0x41200000u, "axis0.controller.config.vel_ramp_rate"},   // 10.0
     {377, ODRIVE_T_FLOAT, 0x3c23d70au, "axis0.controller.config.torque_ramp_rate"},   // 0.009999999776482582
