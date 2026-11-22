@@ -4,6 +4,7 @@
 #ifndef MACHINE_STATE_H
 #define MACHINE_STATE_H
 
+#include "strokes.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include "freertos/FreeRTOS.h"
@@ -78,29 +79,6 @@ typedef struct {
     int32_t value;
 } element_update_t;
 
-typedef enum {
-    STROKE_JACK = 0,
-    STROKE_PULSE,
-    STROKE_PUMP,
-    STROKE_CLASSIC,
-    STROKE_TEASE,
-    STROKE_CRESCENDO,
-    STROKE_SLOW_IN,
-    STROKE_HEARTBEAT,
-    STROKE_BREATHING,
-    STROKE_WANDER,
-    STROKE_PENDULUM,
-    STROKE_BOUNCE,
-    STROKE_SPRING,
-    STROKE_LORENZ,
-    STROKE_GALLOP,
-    STROKE_SWING,
-    STROKE_RAMP_UP,
-    STROKE_FLUTTER,
-    STROKE_WAVES,
-    STROKE_COUNT
-} stroke_id_t;
-
 typedef struct {
     QueueHandle_t buttons_queue;
     volatile machine_state_t state;  // written only by machine_state_task, read by other tasks
@@ -116,7 +94,6 @@ bool machine_apply_button(machine_state_ctx_t *ctx, const button_event_t *ev);
 void machine_state_task(void *arg);
 
 float adjusted_pot_pos(float actual_pos);
-float stroke_eval(stroke_id_t stroke, uint32_t millis, float length);
 float inter_point(float xa, float xb, float ya, float yb, float xc);
 
 // Power, Speed, Length and Stroke kept in NVS ("settings"), so they're the defaults at start-up.

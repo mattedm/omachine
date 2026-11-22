@@ -17,6 +17,13 @@ idf.py -p /dev/ttyACM0 flash
 After the first USB flash, updates can come over the air through the manipulator's
 **Update firmware** menu item (see omachine-manipulator's `tools/make_release.sh`).
 
+## Strokes
+
+The auto strokes are all in [`main/strokes.c`](main/strokes.c), one function each, with how
+to change or add one at the top of [`main/strokes.h`](main/strokes.h). A new stroke's name also
+goes in the manipulator's list (`strokes[]` in `manipulator/main/display_task.cpp`), in the same
+place. [`docs/strokes.png`](../docs/strokes.png) graphs them all.
+
 ## ODrive configuration
 
 The ODrive S1's configuration is in [`odrive/odrive-s1-config.json`](odrive/), with how to

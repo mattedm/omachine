@@ -10,7 +10,7 @@ Chaotic motion never repeats, so a stretch of each is made into a seamless loop:
 FADE_S seconds it cross-fades from the run just past the loop's end, so the end runs straight on
 into the beginning. The loop then starts at its lowest point and is scaled 0..1, so the stroke
 starts at zero offset like the others. The controller interpolates between the RATE_HZ samples
-(loop_stroke_eval in machine_state.c).
+(loop_stroke_eval in strokes.c).
 
 Run from controller/ after changing the settings below (numpy only):
 
