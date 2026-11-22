@@ -7,9 +7,9 @@
 //   1. write its function in strokes.c: start at 0 when millis is 0, and repeat smoothly
 //      (end where it started, without a jump in position or speed);
 //   2. add its id to stroke_id_t below, before STROKE_COUNT;
-//   3. add it to s_strokes[] in strokes.c, with its name;
-//   4. add the same name, at the same place, to strokes[] in manipulator/main/display_task.cpp,
-//      which is what the handle shows (both lists must be in the same order).
+//   3. add it to s_strokes[] in strokes.c, with its name (what the handle shows).
+// The handle gets the names from the controller over the link, so nothing changes on the manipulator.
+// Names can be up to OM_STROKE_NAME_LEN - 1 (15) characters, and there can be up to OM_MAX_STROKES.
 // The knob steps through them in this order. Stroke tables made from simulations (Pendulum,
 // Lorenz) come from tools/gen_loop_strokes.py.
 #pragma once

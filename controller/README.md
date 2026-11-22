@@ -20,9 +20,9 @@ After the first USB flash, updates can come over the air through the manipulator
 ## Strokes
 
 The auto strokes are all in [`main/strokes.c`](main/strokes.c), one function each, with how
-to change or add one at the top of [`main/strokes.h`](main/strokes.h). A new stroke's name also
-goes in the manipulator's list (`strokes[]` in `manipulator/main/display_task.cpp`), in the same
-place. [`docs/strokes.png`](../docs/strokes.png) graphs them all.
+to change or add one at the top of [`main/strokes.h`](main/strokes.h). The handle gets the
+names from the controller, so only the controller changes. [`docs/strokes.png`](../docs/strokes.png)
+graphs them all.
 
 ## ODrive configuration
 

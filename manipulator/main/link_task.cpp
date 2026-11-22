@@ -69,6 +69,51 @@ volatile uint8_t controllerSetupProgress = 0;
 static portMUX_TYPE s_fault_lock = portMUX_INITIALIZER_UNLOCKED;
 static OdriveFault s_fault = {};
 
+static portMUX_TYPE s_names_lock = portMUX_INITIALIZER_UNLOCKED;
+static char s_stroke_names[OM_MAX_STROKES][OM_STROKE_NAME_LEN] = {};
+static uint8_t s_stroke_count = 0;
+static uint32_t s_names_version = 0;
+
+bool strokeName(uint8_t index, char *out, size_t outLen)
+{
+  if (outLen == 0) return false;
+  portENTER_CRITICAL(&s_names_lock);
+  bool known = index < s_stroke_count && s_stroke_names[index][0] != '\0';
+  if (known) {
+    strncpy(out, s_stroke_names[index], outLen - 1);
+    out[outLen - 1] = '\0';
+  }
+  portEXIT_CRITICAL(&s_names_lock);
+  return known;
+}
+
+uint32_t strokeNamesVersion()
+{
+  portENTER_CRITICAL(&s_names_lock);
+  uint32_t v = s_names_version;
+  portEXIT_CRITICAL(&s_names_lock);
+  return v;
+}
+
+// One name from a frame (see OM_STROKE_NAME_LEN in omachine_protocol.h)
+static void storeStrokeName(const om_controller_frame_t &f)
+{
+  if (f.stroke_count > OM_MAX_STROKES || f.stroke_name_index >= f.stroke_count) return;
+  char name[OM_STROKE_NAME_LEN];
+  memcpy(name, f.stroke_name, sizeof(name));
+  name[sizeof(name) - 1] = '\0';
+  portENTER_CRITICAL(&s_names_lock);
+  if (f.stroke_count != s_stroke_count) {
+    s_stroke_count = f.stroke_count;
+    s_names_version++;
+  }
+  if (strcmp(s_stroke_names[f.stroke_name_index], name) != 0) {
+    memcpy(s_stroke_names[f.stroke_name_index], name, sizeof(name));
+    s_names_version++;
+  }
+  portEXIT_CRITICAL(&s_names_lock);
+}
+
 OdriveFault controllerOdriveFault()
 {
   portENTER_CRITICAL(&s_fault_lock);
@@ -273,6 +318,7 @@ static void processFrame(const om_controller_frame_t &f)
   portENTER_CRITICAL(&s_fault_lock);
   s_fault = fault;
   portEXIT_CRITICAL(&s_fault_lock);
+  storeStrokeName(f);
 }
 
 void linkTask(void *parameters)

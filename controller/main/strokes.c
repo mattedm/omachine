@@ -4,6 +4,7 @@
 // strokes.h for how to add or change one.
 
 #include "strokes.h"
+#include "omachine_protocol.h"
 #include "stroke_pendulum_table.h"
 #include "stroke_lorenz_table.h"
 
@@ -286,6 +287,8 @@ typedef struct {
     const char *name;
     stroke_fn_t fn;
 } stroke_entry_t;
+
+_Static_assert(STROKE_COUNT <= OM_MAX_STROKES, "the link carries at most OM_MAX_STROKES stroke names");
 
 static const stroke_entry_t s_strokes[STROKE_COUNT] = {
     [STROKE_JACK] = {"Jack", stroke_jack},

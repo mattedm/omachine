@@ -22,7 +22,7 @@
 
 #include <stdint.h>
 
-#define OM_PROTOCOL_VERSION   8      // bump on any layout change; frames with another version are ignored
+#define OM_PROTOCOL_VERSION   9      // bump on any layout change; frames with another version are ignored
 #define OM_ELEMENT_COUNT      7      // must equal ELEMENT_COUNT in machine_state.h and elements[] in omachine-manipulator
 #define OM_POS_MAX            32767  // positions are scaled 0..OM_POS_MAX across the stroke
 #define OM_SYNC_TOLERANCE     0.02f  // handle and ODrive count as matched within this share of the stroke
@@ -57,6 +57,12 @@
 #define OM_FAULT_RETRYING         0x01  // fault_flags: the controller is still retrying by itself
 // odrive_vbus_dv: the ODrive's latest bus voltage in tenths of a volt, 0 until it has reported one
 
+// Stroke names: the controller's strokes (controller/main/strokes.c) are the only list. Each frame
+// carries one name, stroke_name_index of stroke_count, cycling through them, so the manipulator
+// has them all within stroke_count frames of connecting and a lost frame only delays one name.
+#define OM_MAX_STROKES        64
+#define OM_STROKE_NAME_LEN    16     // bytes, including the terminating NUL
+
 // "Set up ODrive" stages, sent in setup_stage. Running stages, then one of the results, which the
 // controller holds for OM_SETUP_RESULT_HOLD_MS before it restarts.
 #define OM_SETUP_IDLE             0
@@ -81,7 +87,7 @@
 #define OM_FLAG_AUTO_HELD     0x01   // main (auto) button currently held
 #define OM_FLAG_ROTARY_HELD   0x02   // rotary push button currently held
 
-// controller -> manipulator, 27 bytes
+// controller -> manipulator, 45 bytes
 typedef struct __attribute__((packed)) {
     uint8_t  version;                         // OM_PROTOCOL_VERSION
     uint8_t  seq;                             // increments every frame
@@ -96,6 +102,9 @@ typedef struct __attribute__((packed)) {
     uint32_t odrive_disarm;                   // ODrive disarm reason (in OM_STATE_ODRIVE_FAULT; else 0)
     uint16_t odrive_vbus_dv;                  // ODrive bus voltage, 0.1 V
     uint8_t  fault_flags;                     // OM_FAULT_*
+    uint8_t  stroke_count;                    // how many strokes there are (up to OM_MAX_STROKES)
+    uint8_t  stroke_name_index;               // which one stroke_name is
+    char     stroke_name[OM_STROKE_NAME_LEN]; // its name, NUL-terminated
 } om_controller_frame_t;
 
 // manipulator -> controller, 12 bytes
@@ -114,10 +123,10 @@ typedef struct __attribute__((packed)) {
 } om_manipulator_frame_t;
 
 #ifdef __cplusplus
-static_assert(sizeof(om_controller_frame_t) == 27, "controller frame layout");
+static_assert(sizeof(om_controller_frame_t) == 45, "controller frame layout");
 static_assert(sizeof(om_manipulator_frame_t) == 12, "manipulator frame layout");
 #else
-_Static_assert(sizeof(om_controller_frame_t) == 27, "controller frame layout");
+_Static_assert(sizeof(om_controller_frame_t) == 45, "controller frame layout");
 _Static_assert(sizeof(om_manipulator_frame_t) == 12, "manipulator frame layout");
 #endif
 

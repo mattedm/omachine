@@ -77,7 +77,7 @@ static bool displayedHandleBattery = false;   // false: nothing on J9
 static bool displayedHandleCharging = false;
 static OdriveFault displayedOdriveFault = {};
 
-static const char *strokes[] = {"Jack","Pulse","Pump","Classic","Tease","Crescendo","Slow In","Heartbeat","Breathing","Wander","Pendulum","Bounce","Spring","Lorenz","Gallop","Swing","Ramp Up","Flutter","Waves"};   // the controller's stroke_id_t order (controller/main/strokes.h): keep the two lists the same
+static uint32_t displayedNamesVersion = 0;   // strokeNamesVersion() when last drawn (names come from the controller)
 
 static const char *machinestates[OM_STATE_COUNT] = {"Initializing","Homing","Syncing","Manual","Auto","Starting","Link lost","Setting up","ODrive fault"};   // indexed by OM_STATE_*
 
@@ -620,8 +620,11 @@ static void arcloop()
   }
 
   img.setTextDatum(MC_DATUM);
-  const uint8_t numStrokes = sizeof(strokes) / sizeof(strokes[0]);
-  img.drawString(strokeIndex[0] < numStrokes ? strokes[strokeIndex[0]] : "?", tft.width() / 2, STROKE_Y);
+  char strokeLabel[OM_STROKE_NAME_LEN];
+  if (!strokeName(strokeIndex[0], strokeLabel, sizeof(strokeLabel))) {
+    snprintf(strokeLabel, sizeof(strokeLabel), "Stroke %u", strokeIndex[0] + 1);   // its name hasn't arrived yet
+  }
+  img.drawString(strokeLabel, tft.width() / 2, STROKE_Y);
   }
 
   // The fault: its cause (what disarmed the ODrive, else its errors) and what to look at, any other
@@ -1161,8 +1164,9 @@ void displayTask(void *parameters)
     uint8_t handlePct = power_battery_percent();
     // the fault's details (the supply voltage changes every couple of seconds) only matter on its screen
     OdriveFault odriveFault = now[OM_ELEMENT_STATE_INDEX] == OM_STATE_ODRIVE_FAULT ? controllerOdriveFault() : OdriveFault{};
+    uint32_t namesVersion = strokeNamesVersion();
     bool changed = firstDraw || link != displayedLinkUp || (link && rssi != displayedRssi) ||
-                   !(odriveFault == displayedOdriveFault) ||
+                   !(odriveFault == displayedOdriveFault) || namesVersion != displayedNamesVersion ||
                    handleBattery != displayedHandleBattery || handleCharging != displayedHandleCharging ||
                    abs(handlePct - displayedHandlePct) >= 2 ||   // the reading wanders a little under motor load
                    memcmp(now, displayed, sizeof(now)) != 0;
@@ -1174,6 +1178,7 @@ void displayTask(void *parameters)
       displayedHandleCharging = handleCharging;
       displayedHandlePct = handlePct;
       displayedOdriveFault = odriveFault;
+      displayedNamesVersion = namesVersion;
       firstDraw = false;
       arcloop();
       lastDrawMs = millis();

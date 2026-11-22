@@ -36,6 +36,12 @@ struct OdriveFault {
 };
 OdriveFault controllerOdriveFault();
 
+// The controller's stroke names, which it sends one per frame. strokeName copies stroke index's
+// name into out and returns true once it has arrived; strokeNamesVersion changes whenever any name
+// does, so the display knows to redraw.
+bool strokeName(uint8_t index, char *out, size_t outLen);
+uint32_t strokeNamesVersion();
+
 // Set to 1 to log the motor loop rate and link timing (polls, reply delay, send results) once a second.
 #define LOOP_RATE_DEBUG 0
 

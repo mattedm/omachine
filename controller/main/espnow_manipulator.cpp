@@ -391,6 +391,18 @@ extern "C" void espnow_manipulator_task(void *pvParameters)
             frame.odrive_vbus_dv = vbus_dv;
             frame.fault_flags = flags;
         }
+        {
+            // one stroke name per frame, round and round
+            static uint8_t name_index = 0;
+            if (name_index >= STROKE_COUNT) {
+                name_index = 0;
+            }
+            frame.stroke_count = STROKE_COUNT;
+            frame.stroke_name_index = name_index;
+            memset(frame.stroke_name, 0, sizeof(frame.stroke_name));
+            strncpy(frame.stroke_name, stroke_name((stroke_id_t)name_index), sizeof(frame.stroke_name) - 1);
+            name_index++;
+        }
 
         uint8_t dest[ESP_NOW_ETH_ALEN];
         portENTER_CRITICAL(&s_peer_lock);
