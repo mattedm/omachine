@@ -12,6 +12,10 @@
 		// ${workspaceFolder} is each project's own folder here
 		"C_Cpp.intelliSenseEngine": "default",
 		"C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+		// The ESP32-S3 is 32-bit (long and pointers are 4 bytes; uint32_t is unsigned long). IntelliSense
+		// can't emulate the Xtensa compiler and otherwise falls back to 64-bit, where those are 8 bytes
+		// and the protocol's static_asserts on frame sizes fail (in the editor only).
+		"C_Cpp.default.intelliSenseMode": "gcc-x86",
 		"files.exclude": { "**/build": true, "**/managed_components": true }
 	},
 	"extensions": {
