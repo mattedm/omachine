@@ -126,8 +126,9 @@ void machine_settings_load(void);
 
 // twai_odrive_control.c: the main button in ODRIVE_FAULT asks for another try (errors cleared, closed loop)
 void odrive_fault_retry(void);
-// twai_odrive_control.c: the ODrive's error for the manipulator (OM_ODRIVE_ERROR_NONE or a bit number)
-extern volatile uint8_t g_odrive_fault_error;
+// twai_odrive_control.c: the fault for the manipulator: the ODrive's active errors and disarm reason
+// (both 0 when there's none), its bus voltage in 0.1 V, and OM_FAULT_* flags
+void odrive_fault_report(uint32_t *errors, uint32_t *disarm, uint16_t *vbus_dv, uint8_t *flags);
 extern volatile uint8_t machine_settings_saved_count;
 
 #ifdef __cplusplus

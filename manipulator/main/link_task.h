@@ -23,8 +23,18 @@ extern volatile uint8_t setupCancelCount;
 extern volatile uint8_t controllerSetupAck;
 extern volatile uint8_t controllerSetupStage;
 extern volatile uint8_t controllerSetupProgress;
-// The ODrive's error from the controller: OM_ODRIVE_ERROR_NONE or its bit number (OM_STATE_ODRIVE_FAULT)
-extern volatile uint8_t controllerOdriveError;
+// The ODrive's fault from the controller (OM_STATE_ODRIVE_FAULT): its active errors and disarm reason
+// (ODriveError bits), its bus voltage in 0.1 V and OM_FAULT_* flags
+struct OdriveFault {
+  uint32_t errors;
+  uint32_t disarm;
+  uint16_t vbusDv;
+  uint8_t flags;
+  bool operator==(const OdriveFault &o) const {
+    return errors == o.errors && disarm == o.disarm && vbusDv == o.vbusDv && flags == o.flags;
+  }
+};
+OdriveFault controllerOdriveFault();
 
 // Set to 1 to log the motor loop rate and link timing (polls, reply delay, send results) once a second.
 #define LOOP_RATE_DEBUG 0

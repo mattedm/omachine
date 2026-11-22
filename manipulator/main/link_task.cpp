@@ -66,7 +66,16 @@ volatile uint8_t setupCancelCount = 0;
 volatile uint8_t controllerSetupAck = 0;
 volatile uint8_t controllerSetupStage = OM_SETUP_IDLE;
 volatile uint8_t controllerSetupProgress = 0;
-volatile uint8_t controllerOdriveError = OM_ODRIVE_ERROR_NONE;
+static portMUX_TYPE s_fault_lock = portMUX_INITIALIZER_UNLOCKED;
+static OdriveFault s_fault = {};
+
+OdriveFault controllerOdriveFault()
+{
+  portENTER_CRITICAL(&s_fault_lock);
+  OdriveFault f = s_fault;
+  portEXIT_CRITICAL(&s_fault_lock);
+  return f;
+}
 
 // ESP-NOW can't drop frames once queued, so a reply queued behind many others would carry a stale
 // handle position. Instead a poll that arrives while MAX_REPLIES_IN_FLIGHT replies are still being
@@ -260,7 +269,10 @@ static void processFrame(const om_controller_frame_t &f)
   controllerSetupAck = f.setup_ack;
   controllerSetupStage = f.setup_stage;
   controllerSetupProgress = f.setup_progress;
-  controllerOdriveError = f.odrive_error;
+  OdriveFault fault = {f.odrive_errors, f.odrive_disarm, f.odrive_vbus_dv, f.fault_flags};
+  portENTER_CRITICAL(&s_fault_lock);
+  s_fault = fault;
+  portEXIT_CRITICAL(&s_fault_lock);
 }
 
 void linkTask(void *parameters)

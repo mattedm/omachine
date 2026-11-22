@@ -22,7 +22,7 @@
 
 #include <stdint.h>
 
-#define OM_PROTOCOL_VERSION   7      // bump on any layout change; frames with another version are ignored
+#define OM_PROTOCOL_VERSION   8      // bump on any layout change; frames with another version are ignored
 #define OM_ELEMENT_COUNT      7      // must equal ELEMENT_COUNT in machine_state.h and elements[] in omachine-manipulator
 #define OM_POS_MAX            32767  // positions are scaled 0..OM_POS_MAX across the stroke
 #define OM_SYNC_TOLERANCE     0.02f  // handle and ODrive count as matched within this share of the stroke
@@ -47,12 +47,15 @@
 #define OM_STATE_PREAUTO      5      // ODrive moving onto the handle before strokes start
 #define OM_STATE_DISCONNECTED 6
 #define OM_STATE_ODRIVE_SETUP 7      // the menu's "Set up ODrive" is running; the controller restarts after it
-#define OM_STATE_ODRIVE_FAULT 8      // the ODrive reports an error or left closed loop; odrive_error says why.
+#define OM_STATE_ODRIVE_FAULT 8      // the ODrive reports an error or left closed loop; odrive_* say why.
                                      // The main button retries; once it runs again, SYNCING (or homing)
 #define OM_STATE_COUNT        9
 
-// odrive_error: the highest set bit of the ODrive's active errors (ODriveError in firmware 0.6), or
-#define OM_ODRIVE_ERROR_NONE      255   // no error reported (in OM_STATE_ODRIVE_FAULT: it just isn't running)
+// odrive_errors / odrive_disarm: the ODrive's active errors and the errors that disarmed it
+// (axis0.active_errors and axis0.disarm_reason, both ODriveError bits in firmware 0.6), from its
+// Get_Error reply. Both 0 in OM_STATE_ODRIVE_FAULT: it isn't running but reports no error.
+#define OM_FAULT_RETRYING         0x01  // fault_flags: the controller is still retrying by itself
+// odrive_vbus_dv: the ODrive's latest bus voltage in tenths of a volt, 0 until it has reported one
 
 // "Set up ODrive" stages, sent in setup_stage. Running stages, then one of the results, which the
 // controller holds for OM_SETUP_RESULT_HOLD_MS before it restarts.
@@ -78,7 +81,7 @@
 #define OM_FLAG_AUTO_HELD     0x01   // main (auto) button currently held
 #define OM_FLAG_ROTARY_HELD   0x02   // rotary push button currently held
 
-// controller -> manipulator, 17 bytes
+// controller -> manipulator, 27 bytes
 typedef struct __attribute__((packed)) {
     uint8_t  version;                         // OM_PROTOCOL_VERSION
     uint8_t  seq;                             // increments every frame
@@ -89,7 +92,10 @@ typedef struct __attribute__((packed)) {
     uint8_t  setup_ack;                       // the last setup_count the controller has acted on
     uint8_t  setup_stage;                     // OM_SETUP_*
     uint8_t  setup_progress;                  // 0..100 through the current stage
-    uint8_t  odrive_error;                    // OM_ODRIVE_ERROR_NONE, or the bit number of the ODrive's error
+    uint32_t odrive_errors;                   // ODrive active errors (in OM_STATE_ODRIVE_FAULT; else 0)
+    uint32_t odrive_disarm;                   // ODrive disarm reason (in OM_STATE_ODRIVE_FAULT; else 0)
+    uint16_t odrive_vbus_dv;                  // ODrive bus voltage, 0.1 V
+    uint8_t  fault_flags;                     // OM_FAULT_*
 } om_controller_frame_t;
 
 // manipulator -> controller, 12 bytes
@@ -108,10 +114,10 @@ typedef struct __attribute__((packed)) {
 } om_manipulator_frame_t;
 
 #ifdef __cplusplus
-static_assert(sizeof(om_controller_frame_t) == 17, "controller frame layout");
+static_assert(sizeof(om_controller_frame_t) == 27, "controller frame layout");
 static_assert(sizeof(om_manipulator_frame_t) == 12, "manipulator frame layout");
 #else
-_Static_assert(sizeof(om_controller_frame_t) == 17, "controller frame layout");
+_Static_assert(sizeof(om_controller_frame_t) == 27, "controller frame layout");
 _Static_assert(sizeof(om_manipulator_frame_t) == 12, "manipulator frame layout");
 #endif
 

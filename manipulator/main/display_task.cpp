@@ -75,42 +75,60 @@ static int8_t displayedRssi = 0;
 static uint8_t displayedHandlePct = 0;        // the handle's own battery (this board's)
 static bool displayedHandleBattery = false;   // false: nothing on J9
 static bool displayedHandleCharging = false;
-static uint8_t displayedOdriveError = OM_ODRIVE_ERROR_NONE;
+static OdriveFault displayedOdriveFault = {};
 
 static const char *strokes[] = {"Jack","Pulse","Pump","Classic","Tease","Crescendo","Slow In","Heartbeat","Breathing","Wander","Pendulum","Bounce","Spring","Lorenz","Gallop","Swing","Ramp Up","Flutter","Waves"};   // order of stroke_id_t in omachine-controller
 
 static const char *machinestates[OM_STATE_COUNT] = {"Initializing","Homing","Syncing","Manual","Auto","Starting","Link lost","Setting up","ODrive fault"};   // indexed by OM_STATE_*
 
-// What an ODrive error bit (ODriveError, firmware 0.6) means, for the fault screen
-static const char *odriveErrorText(uint8_t bit)
+// What an ODrive error bit (ODriveError, firmware 0.6) means, and what to look at, for the fault screen
+struct OdriveErrorInfo {
+  uint8_t bit;
+  const char *name;
+  const char *hint;
+};
+static const OdriveErrorInfo odriveErrors[] = {
+  {0,  "Still starting",        "Is it powered?"},
+  {1,  "System error",          "Power-cycle the ODrive"},
+  {2,  "Timing error",          "Power-cycle the ODrive"},
+  {3,  "No position estimate",  "Check the encoder"},
+  {4,  "Bad configuration",     "Run Set up ODrive"},
+  {5,  "Gate driver fault",     "Power-cycle the ODrive"},
+  {6,  "Missing input",         "No position over CAN"},
+  {8,  "Supply voltage high",   "Check brake resistor"},
+  {9,  "Supply voltage low",    "Battery low or sagging"},
+  {10, "Supply current high",   "Over the battery limit"},
+  {11, "Regen current high",    "Braking too hard"},
+  {12, "Current limit",         "Motor current overshot"},
+  {13, "Motor too hot",         "Let the motor cool"},
+  {14, "ODrive too hot",        "Let the ODrive cool"},
+  {15, "Too fast",              "Over the speed limit"},
+  {16, "Past position limit",   "Check the rail limits"},
+  {17, "Current asked too high","Lower the Power"},
+  {24, "Watchdog",              "Commands stopped"},
+  {25, "E-stop",                "E-stop input active"},
+  {26, "Spinout",               "Encoder slipped?"},
+  {27, "Brake resistor",        "Check its wiring"},
+  {28, "Thermistor unplugged",  "Check the thermistor"},
+  {30, "Calibration error",     "Run Set up ODrive"},
+};
+
+static const OdriveErrorInfo *odriveErrorInfo(uint8_t bit)
 {
-  switch (bit) {
-    case 0:  return "Still starting";
-    case 1:  return "System error";
-    case 2:  return "Timing error";
-    case 3:  return "No position estimate";
-    case 4:  return "Bad configuration";
-    case 5:  return "Gate driver fault";
-    case 6:  return "Missing input";
-    case 8:  return "Supply voltage high";
-    case 9:  return "Supply voltage low";
-    case 10: return "Supply current high";
-    case 11: return "Regen current high";
-    case 12: return "Current limit";
-    case 13: return "Motor too hot";
-    case 14: return "ODrive too hot";
-    case 15: return "Too fast";
-    case 16: return "Past position limit";
-    case 17: return "Current asked too high";
-    case 24: return "Watchdog";
-    case 25: return "E-stop";
-    case 26: return "Spinout";
-    case 27: return "Brake resistor";
-    case 28: return "Thermistor unplugged";
-    case 30: return "Calibration error";
-    case OM_ODRIVE_ERROR_NONE: return "Not running";
-    default: return "Unknown error";
+  static const OdriveErrorInfo unknown = {255, "Unknown error", "See the controller log"};
+  for (const OdriveErrorInfo &e : odriveErrors) {
+    if (e.bit == bit) return &e;
   }
+  return &unknown;
+}
+
+// The bit to show as the cause: Brake resistor (disarmed) and Still starting usually just follow
+// another error, so another bit comes first; otherwise the lowest. 255 if there are none.
+static uint8_t odriveCauseBit(uint32_t errors)
+{
+  const uint32_t followers = (1u << 27) | (1u << 0);
+  uint32_t pick = (errors & ~followers) ? (errors & ~followers) : errors;
+  return pick ? (uint8_t)__builtin_ctz(pick) : 255;
 }
 
 volatile DisplayScreen displayScreen = SCREEN_OPERATING;
@@ -540,6 +558,8 @@ static void drawHomingFailedScreen()
 #define STROKE_Y      145   // stroke name (centre)
 #define LABEL_ROW_Y   172   // Speed and Length; their values below
 #define BOTTOM_BATTERY_Y 216   // centre of the controller's battery
+#define FAULT_CAUSE_Y   130   // ODrive fault: the cause (centre), then lines FAULT_LINE_STEP apart
+#define FAULT_LINE_STEP 19
 
 static void arcloop()
 {
@@ -604,15 +624,49 @@ static void arcloop()
   img.drawString(strokeIndex[0] < numStrokes ? strokes[strokeIndex[0]] : "?", tft.width() / 2, STROKE_Y);
   }
 
+  // The fault: its cause (what disarmed the ODrive, else its errors) and what to look at, any other
+  // errors, the bus voltage now, and whether the controller is still retrying
   if (fault) {
+    const OdriveFault &f = displayedOdriveFault;
+    const int16_t cx = tft.width() / 2;
+    const uint32_t all = f.errors | f.disarm;
+    const uint8_t cause = odriveCauseBit(f.disarm ? f.disarm : f.errors);
+    const OdriveErrorInfo *info = odriveErrorInfo(cause);
+    char line[40];
+    int16_t y = FAULT_CAUSE_Y;
+
+    img.setTextDatum(MC_DATUM);
     img.setFont(&Roboto_Light_24);
     img.setTextColor(TFT_ORANGE, TFT_BLACK);
-    img.setTextDatum(MC_DATUM);
-    img.drawString(odriveErrorText(displayedOdriveError), tft.width() / 2, STROKE_Y);
+    const char *name = all ? info->name : "Not running";
+    if (img.textWidth(name) > tft.width() - 24) img.setFont(&Roboto_Light_16);
+    img.drawString(name, cx, y);
+    y += 24;
+
     img.setFont(&Roboto_Light_16);
+    img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    img.drawString(all ? info->hint : "Not in closed loop", cx, y);
+    y += FAULT_LINE_STEP;
+
+    uint32_t others = all & ~(cause < 32 ? (1u << cause) : 0u);
+    if (others) {
+      const uint8_t next = odriveCauseBit(others);
+      const int more = __builtin_popcount(others) - 1;
+      if (more > 0) snprintf(line, sizeof(line), "Also: %s +%d", odriveErrorInfo(next)->name, more);
+      else snprintf(line, sizeof(line), "Also: %s", odriveErrorInfo(next)->name);
+      img.setTextColor(TFT_DARKGREY, TFT_BLACK);
+      img.drawString(line, cx, y);
+      y += FAULT_LINE_STEP;
+    }
+
     img.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    img.setTextDatum(TC_DATUM);
-    img.drawString("Press to retry", tft.width() / 2, LABEL_ROW_Y + 9);
+    if (f.vbusDv) {
+      snprintf(line, sizeof(line), "Supply %u.%u V", f.vbusDv / 10, f.vbusDv % 10);
+      img.drawString(line, cx, y);
+      y += FAULT_LINE_STEP;
+    }
+    img.setTextColor((f.flags & OM_FAULT_RETRYING) ? TFT_DARKGREY : TFT_LIGHTGREY, TFT_BLACK);
+    img.drawString((f.flags & OM_FAULT_RETRYING) ? "Retrying..." : "Press to retry", cx, y);
   }
 
 //TOP ROW: the handle's own battery (with a bolt while it charges from USB), then the link's signal bars
@@ -1105,9 +1159,10 @@ void displayTask(void *parameters)
     bool handleBattery = charge != CHARGE_NO_BATTERY;
     bool handleCharging = charge == CHARGE_CHARGING;
     uint8_t handlePct = power_battery_percent();
-    uint8_t odriveError = controllerOdriveError;
+    // the fault's details (the supply voltage changes every couple of seconds) only matter on its screen
+    OdriveFault odriveFault = now[OM_ELEMENT_STATE_INDEX] == OM_STATE_ODRIVE_FAULT ? controllerOdriveFault() : OdriveFault{};
     bool changed = firstDraw || link != displayedLinkUp || (link && rssi != displayedRssi) ||
-                   odriveError != displayedOdriveError ||
+                   !(odriveFault == displayedOdriveFault) ||
                    handleBattery != displayedHandleBattery || handleCharging != displayedHandleCharging ||
                    abs(handlePct - displayedHandlePct) >= 2 ||   // the reading wanders a little under motor load
                    memcmp(now, displayed, sizeof(now)) != 0;
@@ -1118,7 +1173,7 @@ void displayTask(void *parameters)
       displayedHandleBattery = handleBattery;
       displayedHandleCharging = handleCharging;
       displayedHandlePct = handlePct;
-      displayedOdriveError = odriveError;
+      displayedOdriveFault = odriveFault;
       firstDraw = false;
       arcloop();
       lastDrawMs = millis();

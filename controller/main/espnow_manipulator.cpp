@@ -381,7 +381,16 @@ extern "C" void espnow_manipulator_task(void *pvParameters)
         }
         frame.saved_count = machine_settings_saved_count;
         odrive_setup_status(&frame.setup_ack, &frame.setup_stage, &frame.setup_progress);
-        frame.odrive_error = g_odrive_fault_error;
+        {
+            uint32_t errors, disarm;
+            uint16_t vbus_dv;
+            uint8_t flags;
+            odrive_fault_report(&errors, &disarm, &vbus_dv, &flags);   // not straight into the packed frame
+            frame.odrive_errors = errors;
+            frame.odrive_disarm = disarm;
+            frame.odrive_vbus_dv = vbus_dv;
+            frame.fault_flags = flags;
+        }
 
         uint8_t dest[ESP_NOW_ETH_ALEN];
         portENTER_CRITICAL(&s_peer_lock);

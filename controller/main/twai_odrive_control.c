@@ -50,7 +50,7 @@
 #define GET_VERSION             0   // reply goes to odrive_setup.c
 #define ODRIVE_HEARTBEAT        1
 #define ESTOP                   2
-#define GET_MOTOR_ERROR         3/*IMPLEMENTED IN REQUEST_MSG*/
+#define GET_ERROR               3   // asked for by remote frame: active errors, disarm reason
 #define GET_ENCODER_ERROR       4/*IMPLEMENTED IN REQUEST_MSG*/
 #define SET_AXIS_NODE_ID        6
 #define SET_AXIS_REQUESTED_STATE  7
@@ -146,6 +146,11 @@ SemaphoreHandle_t VBusVoltage_semaphore;
 
 volatile uint8_t AxisStatus = 0;
 volatile uint32_t AxisError = 0;
+// The fault the manipulator shows: the ODrive's active errors and disarm reason, from its Get_Error
+// reply (or the heartbeat's errors until that comes), kept until it runs again
+static volatile uint32_t s_fault_errors = 0;
+static volatile uint32_t s_fault_disarm = 0;
+static volatile bool s_fault_retrying = false;   // automatic tries left
 volatile uint8_t AxisProcedureResult = 0;   // heartbeat byte 5: result of the last calibration etc.
 volatile uint32_t HeartbeatCount = 0;       // heartbeats received, so odrive_setup.c can tell a new one
 SemaphoreHandle_t AxisStatus_semaphore;
@@ -421,6 +426,16 @@ void twai_process_task(void *pvParameters) {
         case TX_SDO:
             odrive_setup_on_rx(msg.id, msg.data);
             break;
+        case GET_ERROR: {
+            uint32_t active, disarm;
+            memcpy(&active, &msg.data[0], sizeof(active));
+            memcpy(&disarm, &msg.data[4], sizeof(disarm));
+            if (active | disarm) {   // keep the last cause; an empty reply (errors cleared) doesn't erase it
+                s_fault_errors = active;
+                s_fault_disarm = disarm;
+            }
+            break;
+        }
         case GET_VBUS_VOLTAGE:
             memcpy(&VBusVoltage, &msg.data[0], sizeof(VBusVoltage));
             ESP_LOGI(TAG, "RX VBus Voltage: %f", \
@@ -443,7 +458,7 @@ static twai_node_handle_t s_odrive_node = NULL;   // set once the TWAI node is u
 // main button (odrive_fault_retry) allows that many more.
 #define FAULT_AUTO_TRIES    3
 #define FAULT_RETRY_MS      2000
-volatile uint8_t g_odrive_fault_error = OM_ODRIVE_ERROR_NONE;   // sent to the manipulator as odrive_error
+#define FAULT_QUERY_MS      300    // how often Get_Error is asked for while there's a fault
 static volatile bool s_fault_retry = false;
 
 void odrive_fault_retry(void)
@@ -451,15 +466,52 @@ void odrive_fault_retry(void)
     s_fault_retry = true;
 }
 
-// The highest set bit of the ODrive's errors, as the manipulator names them
-static uint8_t odrive_error_bit(uint32_t errors)
+static bool odrive_can_request(uint32_t cmd);
+
+// A fault is showing: ask the ODrive for its errors now and then (the reply lands in s_fault_*),
+// with the heartbeat's errors meanwhile; retrying says whether automatic tries are left. Logs a change.
+static void fault_note(bool retrying)
 {
-    return errors ? (uint8_t)(31 - __builtin_clz(errors)) : OM_ODRIVE_ERROR_NONE;
+    static TickType_t last_query = 0;
+    static uint32_t logged_errors = 0, logged_disarm = 0;
+    TickType_t now = xTaskGetTickCount();
+    if (now - last_query >= pdMS_TO_TICKS(FAULT_QUERY_MS)) {
+        odrive_can_request(GET_ERROR);
+        last_query = now;
+    }
+    if (s_fault_errors == 0 && s_fault_disarm == 0 && AxisError != 0) {
+        s_fault_errors = AxisError;
+    }
+    s_fault_retrying = retrying;
+    if (s_fault_errors != logged_errors || s_fault_disarm != logged_disarm) {
+        ESP_LOGE(TAG, "ODrive fault: active errors 0x%" PRIx32 ", disarm reason 0x%" PRIx32 ", bus %.1f V",
+                 s_fault_errors, s_fault_disarm, VBusVoltage);
+        logged_errors = s_fault_errors;
+        logged_disarm = s_fault_disarm;
+    }
+}
+
+// Running again: nothing to show
+static void fault_clear(void)
+{
+    s_fault_errors = 0;
+    s_fault_disarm = 0;
+    s_fault_retrying = false;
+}
+
+void odrive_fault_report(uint32_t *errors, uint32_t *disarm, uint16_t *vbus_dv, uint8_t *flags)
+{
+    *errors = s_fault_errors;
+    *disarm = s_fault_disarm;
+    float v = VBusVoltage * 10.0f + 0.5f;
+    *vbus_dv = (v <= 0.0f) ? 0 : (v >= 65535.0f ? 65535 : (uint16_t)v);
+    *flags = s_fault_retrying ? OM_FAULT_RETRYING : 0;
 }
 
 // Send one CANSimple command to the ODrive. False if the previous one hasn't gone out yet (the
 // ODrive isn't ACKing, e.g. while it reboots) or the TX queue is full: try again.
-bool odrive_can_send(uint32_t cmd, const uint8_t *data, uint8_t len)
+// A data frame, or (rtr) a remote frame asking for an 8-byte reply
+static bool odrive_can_frame(uint32_t cmd, const uint8_t *data, uint8_t len, bool rtr)
 {
     if (s_odrive_node == NULL || s_generic_in_flight || len > TWAI_FRAME_MAX_LEN) {
         return false;
@@ -468,6 +520,8 @@ bool odrive_can_send(uint32_t cmd, const uint8_t *data, uint8_t len)
         memcpy(s_generic_payload, data, len);
     }
     s_generic_frame.header.id = (ODRIVE_NODE_ID << 5) | cmd;
+    s_generic_frame.header.rtr = rtr;
+    s_generic_frame.header.dlc = rtr ? 8 : 0;
     s_generic_frame.buffer_len = len;
     s_generic_in_flight = true;
     if (twai_node_transmit(s_odrive_node, &s_generic_frame, TWAI_TX_QUEUE_TIMEOUT_MS) != ESP_OK) {
@@ -476,6 +530,16 @@ bool odrive_can_send(uint32_t cmd, const uint8_t *data, uint8_t len)
     }
     twai_node_transmit_wait_all_done(s_odrive_node, TWAI_TX_DONE_TIMEOUT_MS);
     return true;
+}
+
+bool odrive_can_send(uint32_t cmd, const uint8_t *data, uint8_t len)
+{
+    return odrive_can_frame(cmd, data, len, false);
+}
+
+static bool odrive_can_request(uint32_t cmd)
+{
+    return odrive_can_frame(cmd, NULL, 0, true);
 }
 
 // ODrive interface functions
@@ -630,7 +694,7 @@ void odrive_task(void *pvParameters) {
             start_clears = 0;
         }
         if (AxisError != 0) {
-            g_odrive_fault_error = odrive_error_bit(AxisError);
+            fault_note(start_clears < FAULT_AUTO_TRIES);
             TickType_t now = xTaskGetTickCount();
             if (start_clears < FAULT_AUTO_TRIES) {
                 if (start_clears == 0 || now - last_clear >= pdMS_TO_TICKS(FAULT_RETRY_MS)) {
@@ -651,7 +715,7 @@ void odrive_task(void *pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(100)); // Wait 100 ms between checks
     }
 
-    g_odrive_fault_error = OM_ODRIVE_ERROR_NONE;
+    fault_clear();
     request_state_event(BUTTON_ODRIVE_RECOVERED);   // back to INITIAL, if the start-up had a fault shown
     request_state_event(BUTTON_HOMING_STARTED);
 
@@ -730,12 +794,10 @@ void odrive_task(void *pvParameters) {
             }
             if (AxisStatus == CLOSED_LOOP_CONTROL) {
                 ESP_LOGW(TAG, "ODrive running again");
-                g_odrive_fault_error = OM_ODRIVE_ERROR_NONE;
+                fault_clear();
                 request_state_event(BUTTON_ODRIVE_RECOVERED);   // SYNCING: hold where it is, the handle comes over
             } else {
-                if (AxisError != 0) {
-                    g_odrive_fault_error = odrive_error_bit(AxisError);
-                }
+                fault_note(fault_tries < FAULT_AUTO_TRIES);
                 if (fault_tries < FAULT_AUTO_TRIES && now_tick_loop - fault_last_try >= pdMS_TO_TICKS(FAULT_RETRY_MS)) {
                     // Hold where it is now (it may have been moved while off), then clear and arm
                     uint8_t d[1] = {0};
@@ -755,7 +817,8 @@ void odrive_task(void *pvParameters) {
                        control.machine_state == MACHINE_PREAUTO || control.machine_state == MACHINE_AUTO ||
                        control.machine_state == MACHINE_DISCONNECTED;
         if (running && AxisStatus != CLOSED_LOOP_CONTROL && !g_firmware_update_active) {
-            g_odrive_fault_error = odrive_error_bit(AxisError);
+            fault_clear();
+            fault_note(true);
             ESP_LOGE(TAG, "ODrive left closed loop (state %d, errors 0x%" PRIx32 ") in machine state %d",
                      AxisStatus, AxisError, control.machine_state);
             request_state_event(BUTTON_ODRIVE_FAULT);
