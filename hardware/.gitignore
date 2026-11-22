@@ -22,6 +22,9 @@ pcb/*/*.step
 pcb/manipulator/3dmodels/*
 !pcb/manipulator/3dmodels/USB_C_SHOU_HAN_TYPE-C-16PIN-2MD-073.step
 
+# An old copy of the MT6701 driver (the one in use is manipulator/main/fast_mt6701.cpp)
+pcb/encoder-breakouts/firmware/
+
 # Scratch images from design work
 pcb/manipulator/u1_mode_trace.png
 

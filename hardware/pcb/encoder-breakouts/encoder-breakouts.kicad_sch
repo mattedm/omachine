@@ -1,0 +1,106 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "9.0")
+	(uuid "12345678-1234-1234-1234-123456789abc")
+	(paper "A4")
+	(title_block
+		(title "Encoder breakouts")
+		(date "2026-11-08")
+		(rev "1.0")
+		(comment 1 "Magnetic encoder and EC11 rotary encoder boards for the omachine manipulator board")
+		(comment 2 "Copyright 2026 MattEdm. CERN-OHL-S-2.0")
+		(comment 3 "https://github.com/mattedm/omachine")
+	)
+	(lib_symbols)
+	(sheet
+		(at 40.64 45.72)
+		(size 25.4 10.16)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "e4c0de00-0ec1-4a00-9000-000000000003")
+		(property "Sheetname" "Rotary"
+			(at 40.64 45.01 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "rotary.kicad_sch"
+			(at 40.64 56.47 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "encoder-breakouts"
+				(path "/12345678-1234-1234-1234-123456789abc"
+					(page "3")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 40.64 27.94)
+		(size 25.4 10.16)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "e4c0de00-5048-4a00-9000-000000000001")
+		(property "Sheetname" "Encoder"
+			(at 40.64 27.23 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "encoder.kicad_sch"
+			(at 40.64 38.69 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "encoder-breakouts"
+				(path "/12345678-1234-1234-1234-123456789abc"
+					(page "2")
+				)
+			)
+		)
+	)
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
+	(embedded_fonts no)
+)

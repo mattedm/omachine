@@ -5,6 +5,7 @@ The physical design of the omachine: the circuit board (KiCad) and the mechanica
 | Folder | What | Tool |
 |---|---|---|
 | [`pcb/manipulator/`](pcb/manipulator) | The handle's board: ESP32-S3-MINI-1, DRV8311 gimbal motor driver, 1S battery charger, connectors for the display, encoder, knob and button | KiCad 9 |
+| [`pcb/encoder-breakouts/`](pcb/encoder-breakouts) | The handle's two small boards, on one breakaway panel: the MT6701 magnetic encoder (the handle motor's angle) and the EC11 rotary encoder (the knob) | KiCad 9 |
 | [`cad/manipulator/`](cad/manipulator) | The handle: `manipulator.FCStd` | FreeCAD 1.1 |
 | [`cad/machine/`](cad/machine) | The main machine: `omachine.FCStd` | FreeCAD 1.1 |
 
@@ -28,6 +29,13 @@ plugin, so they match.
   microamps of leakage from D1 when the board was warm turned Q1 on, and the button read as held.
 - Named the omachine manipulator board (was a DRV8311 breakout), with the source link
   github.com/mattedm/omachine on the back silkscreen.
+
+## The encoder boards
+
+Open `pcb/encoder-breakouts/encoder-breakouts.kicad_pro`. The two boards are separate sheets
+(`encoder.kicad_sch`, `rotary.kicad_sch`) laid out on one panel with a breakaway rail, and are
+ordered together from `pcb/encoder-breakouts/production/` (revision 1.0). They plug into the
+manipulator board's ENCODER and ROTARY connectors.
 
 ## License
 
