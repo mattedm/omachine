@@ -35,8 +35,8 @@ docs/           the stroke graph
   motor follows it; it stiffens again once the handle leads.
 - **Auto.** The main button switches between Manual and the selected stroke. Pressing the knob
   steps through Speed, Length and Stroke, and turning it changes them. Holding the knob opens
-  the menu, which sets Power (the motor's current limit), saves the settings as start-up
-  defaults, sets up the ODrive and updates the firmware.
+  the menu: Power (the motor's current limit), Save settings (as the start-up defaults),
+  Calibrate motor (the handle's), Set up ODrive, Wi-Fi setup and Update firmware.
 - **Faults.** If the ODrive stops, the handle shows why ("Supply voltage low", for example),
   what to check and the supply voltage. The controller retries a few times; after that, the
   main button retries.
