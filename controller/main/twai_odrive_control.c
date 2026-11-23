@@ -877,7 +877,11 @@ void odrive_task(void *pvParameters) {
             have_reading = true;
         }
         if (!have_reading || g_firmware_update_active) {
-            continue;   // nothing from the handle yet, or an update is being written: leave the ODrive be
+            // nothing from the handle yet, or an update is being written: leave the ODrive be. Restart
+            // the wait, or the next pass wouldn't block and this task (above the update receiver's
+            // priority) would spin and starve it.
+            last_pass = xTaskGetTickCount();
+            continue;
         }
         last_pass = xTaskGetTickCount();
 #if TIMING_DEBUG
