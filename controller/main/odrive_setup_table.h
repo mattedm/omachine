@@ -232,7 +232,7 @@ static const odrive_setting_t odrive_settings[ODRIVE_SETTING_COUNT] = {
     {384, ODRIVE_T_I32, 0x00000400u, "axis0.controller.config.steps_per_circular_range"},   // 1024
     {385, ODRIVE_T_FLOAT, 0x3e800000u, "axis0.controller.config.homing_speed"},   // 0.25
     {386, ODRIVE_T_FLOAT, 0x00000000u, "axis0.controller.config.inertia"},   // 0.0
-    {387, ODRIVE_T_FLOAT, 0x43480000u, "axis0.controller.config.input_filter_bandwidth"},   // 200.0
+    {387, ODRIVE_T_FLOAT, 0x42c80000u, "axis0.controller.config.input_filter_bandwidth"},   // 100.0
     {388, ODRIVE_T_FLOAT, 0x41a00000u, "axis0.controller.config.spinout_mechanical_power_bandwidth"},   // 20.0
     {389, ODRIVE_T_FLOAT, 0x41a00000u, "axis0.controller.config.spinout_electrical_power_bandwidth"},   // 20.0
     {390, ODRIVE_T_FLOAT, 0xc1200000u, "axis0.controller.config.spinout_mechanical_power_threshold"},   // -10.0

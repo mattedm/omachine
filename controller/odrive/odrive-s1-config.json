@@ -207,7 +207,7 @@
   "axis0.controller.config.steps_per_circular_range": 1024,
   "axis0.controller.config.homing_speed": 0.25,
   "axis0.controller.config.inertia": 0.0,
-  "axis0.controller.config.input_filter_bandwidth": 200.0,
+  "axis0.controller.config.input_filter_bandwidth": 100.0,
   "axis0.controller.config.spinout_mechanical_power_bandwidth": 20.0,
   "axis0.controller.config.spinout_electrical_power_bandwidth": 20.0,
   "axis0.controller.config.spinout_mechanical_power_threshold": -10.0,
