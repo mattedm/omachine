@@ -236,7 +236,7 @@ static const odrive_setting_t odrive_settings[ODRIVE_SETTING_COUNT] = {
     {388, ODRIVE_T_FLOAT, 0x41a00000u, "axis0.controller.config.spinout_mechanical_power_bandwidth"},   // 20.0
     {389, ODRIVE_T_FLOAT, 0x41a00000u, "axis0.controller.config.spinout_electrical_power_bandwidth"},   // 20.0
     {390, ODRIVE_T_FLOAT, 0xc1200000u, "axis0.controller.config.spinout_mechanical_power_threshold"},   // -10.0
-    {391, ODRIVE_T_FLOAT, 0x41200000u, "axis0.controller.config.spinout_electrical_power_threshold"},   // 10.0
+    {391, ODRIVE_T_FLOAT, 0x42c80000u, "axis0.controller.config.spinout_electrical_power_threshold"},   // 100.0
     {402, ODRIVE_T_FLOAT, 0x40000000u, "axis0.trap_traj.config.vel_limit"},   // 2.0
     {403, ODRIVE_T_FLOAT, 0x3f000000u, "axis0.trap_traj.config.accel_limit"},   // 0.5
     {404, ODRIVE_T_FLOAT, 0x3f000000u, "axis0.trap_traj.config.decel_limit"},   // 0.5

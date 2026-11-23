@@ -211,7 +211,7 @@
   "axis0.controller.config.spinout_mechanical_power_bandwidth": 20.0,
   "axis0.controller.config.spinout_electrical_power_bandwidth": 20.0,
   "axis0.controller.config.spinout_mechanical_power_threshold": -10.0,
-  "axis0.controller.config.spinout_electrical_power_threshold": 10.0,
+  "axis0.controller.config.spinout_electrical_power_threshold": 100.0,
   "axis0.trap_traj.config.vel_limit": 2.0,
   "axis0.trap_traj.config.accel_limit": 0.5,
   "axis0.trap_traj.config.decel_limit": 0.5,
