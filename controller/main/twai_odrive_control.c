@@ -101,6 +101,12 @@ static const char *TAG = "odrive-control";
 #define HOMING_MIN_TRAVEL   1.0f   // ends closer than this (turns): it never really moved
 #define HOMING_BACKOFF      0.1f   // keep this far (turns) inside each end
 #define HOMING_FALLBACK     0.5f   // homing failed: a span this far (turns) either side of where it is
+// Auto: the stroke's target passes through a limiter, so no stroke at any Speed asks for more than
+// the motor can do. Without it, Heartbeat at high Speed asked for over 15 turns/s and braked so hard
+// from there that the ODrive tripped its spinout check. Within these limits it's followed exactly.
+#define AUTO_VEL_MAX        12.0f  // turns/s, under VEL_LIMIT
+#define AUTO_ACCEL_MAX      300.0f // turns/s^2 (the default-Speed strokes stay under it)
+#define AUTO_TRACK_S        0.02f  // how quickly the limited target closes a gap to the stroke
 #define LOOP_PERIOD_MS      5      // a setpoint at least this often, handle reading or not (the link polls at the same rate)
 #define MANUAL_EASE_SPEED   0.2f  // on entering MANUAL, move the target from the hold position at this many spans per second
 // MANUAL: the target goes this share of the way from the ODrive to the handle on each pass. Below 1
@@ -844,6 +850,8 @@ void odrive_task(void *pvParameters) {
     int32_t prev_stroke_index = -1;
     bool stroke_changing = false;
     float last_target = EncoderEstimate;   // the last target sent; starts where the ODrive is
+    bool auto_limiting = false;            // Auto's speed and acceleration limiter (AUTO_VEL_MAX...)
+    float lim_pos = 0.0f, lim_vel = 0.0f, lim_prev_desired = 0.0f;
     // Entering MANUAL from SYNCING, the ODrive sits a little off hold_position (the error it holds
     // the load with), and MANUAL's target lands on where it actually is. Ease the target over at
     // MANUAL_EASE_SPEED so the holding force fades instead of dropping in one frame.
@@ -1030,6 +1038,31 @@ void odrive_task(void *pvParameters) {
         default:
             target = EncoderEstimate;
             break;
+        }
+        // Auto: limit the target's speed and acceleration (AUTO_VEL_MAX, AUTO_ACCEL_MAX). It follows the
+        // stroke's own speed, plus a correction that closes any gap but can always stop in time.
+        if (control.machine_state == MACHINE_AUTO) {
+            if (!auto_limiting) {
+                auto_limiting = true;
+                lim_pos = last_target;
+                lim_vel = 0.0f;
+                lim_prev_desired = target;
+            }
+            if (dt_ms > 0) {
+                float dt = (float)dt_ms / 1000.0f;
+                float stroke_vel = (target - lim_prev_desired) / dt;
+                lim_prev_desired = target;
+                float err = target - lim_pos;
+                float closing = fminf(fabsf(err) / AUTO_TRACK_S, sqrtf(2.0f * AUTO_ACCEL_MAX * fabsf(err)));
+                float want = stroke_vel + copysignf(closing, err);
+                want = fminf(fmaxf(want, -AUTO_VEL_MAX), AUTO_VEL_MAX);
+                float dv_max = AUTO_ACCEL_MAX * dt;
+                lim_vel += fminf(fmaxf(want - lim_vel, -dv_max), dv_max);
+                lim_pos += lim_vel * dt;
+            }
+            target = lim_pos;
+        } else {
+            auto_limiting = false;
         }
         // Safety net: never command the ODrive outside the Contracted..Extended span
         if (target < EncoderContracted) {
