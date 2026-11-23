@@ -101,6 +101,7 @@ static const char *TAG = "odrive-control";
 #define HOMING_MIN_TRAVEL   1.0f   // ends closer than this (turns): it never really moved
 #define HOMING_BACKOFF      0.1f   // keep this far (turns) inside each end
 #define HOMING_FALLBACK     0.5f   // homing failed: a span this far (turns) either side of where it is
+#define LOOP_PERIOD_MS      5      // a setpoint at least this often, handle reading or not (the link polls at the same rate)
 #define MANUAL_EASE_SPEED   0.2f  // on entering MANUAL, move the target from the hold position at this many spans per second
 // MANUAL: the target goes this share of the way from the ODrive to the handle on each pass. Below 1
 // it's soft, but the lag is the ODrive's own (about 20 ms) divided by it: 0.5 measured 38 ms.
@@ -851,8 +852,29 @@ void odrive_task(void *pvParameters) {
     float held_s = 0.0f, keep_s = 0.0f;
 #endif
 
-    // Block for next manipulator position
-    while (xQueueReceive(manipulator_encoder_queue, &enc_msg, -1) == pdTRUE) {
+    // One pass for every handle reading, as soon as it arrives, and at least every LOOP_PERIOD_MS
+    // without one: Auto's strokes come from the controller's own clock, so a slow radio link (a
+    // busy Wi-Fi channel delays the handle's replies by tens of ms) doesn't stutter them. A pass
+    // without a fresh reading uses the last one.
+    bool have_reading = false;
+    TickType_t last_pass = xTaskGetTickCount();
+    TickType_t last_fresh = last_pass;
+    for (;;) {
+        TickType_t since = xTaskGetTickCount() - last_pass;
+        TickType_t wait = since >= pdMS_TO_TICKS(LOOP_PERIOD_MS) ? 0 : pdMS_TO_TICKS(LOOP_PERIOD_MS) - since;
+        bool fresh = xQueueReceive(manipulator_encoder_queue, &enc_msg, wait) == pdTRUE;
+        if (fresh) {
+            have_reading = true;
+        }
+        if (!have_reading || g_firmware_update_active) {
+            continue;   // nothing from the handle yet, or an update is being written: leave the ODrive be
+        }
+        last_pass = xTaskGetTickCount();
+        float fresh_dt_s = 0.0f;   // since the previous fresh reading, on a pass with a fresh one
+        if (fresh) {
+            fresh_dt_s = (float)((last_pass - last_fresh) * portTICK_PERIOD_MS) / 1000.0f;
+            last_fresh = last_pass;
+        }
 #if TIMING_DEBUG
         int64_t loop_start_us = esp_timer_get_time();
 #endif
@@ -860,6 +882,9 @@ void odrive_task(void *pvParameters) {
             continue;   // odrive_setup.c has the ODrive: no setpoints or limits
         }
         float controller_target = C_ManipulatorEncoder_OdriveEncoder(enc_msg.value);
+        if (!fresh && machine_state_get(&s_machine_ctx) == MACHINE_DISCONNECTED) {
+            continue;   // link lost: the ODrive holds its last target (resending its own position would let it sag)
+        }
         //ESP_LOGI(TAG, "Recieved manipulator encoder: %f", controller_target);
         control.machine_state = machine_state_get(&s_machine_ctx);
         control.speed_pct = machine_element_value(ELEMENT_SPEED);
@@ -1008,10 +1033,11 @@ void odrive_task(void *pvParameters) {
 #if COMPLIANCE_ENABLE
         {
             float dt_s = (float)dt_ms / 1000.0f;
-            if (dt_s > 0.0f) {
+            // the handle's speed, from fresh readings only (a repeated one isn't the handle stopping)
+            if (fresh && fresh_dt_s > 0.0f) {
                 if (!isnan(prev_handle)) {
-                    float raw = (controller_target - prev_handle) / dt_s;
-                    handle_vel += (dt_s / (HANDLE_VEL_FILTER_S + dt_s)) * (raw - handle_vel);
+                    float raw = (controller_target - prev_handle) / fresh_dt_s;
+                    handle_vel += (fresh_dt_s / (HANDLE_VEL_FILTER_S + fresh_dt_s)) * (raw - handle_vel);
                 }
                 prev_handle = controller_target;
             }
@@ -1123,7 +1149,6 @@ void odrive_task(void *pvParameters) {
             }
             last_vbus_tick = now_tick;
         }
-        // No delay here: the loop is paced by manipulator replies (POLL_PERIOD_MS in espnow_manipulator.cpp)
     }
 }
 
