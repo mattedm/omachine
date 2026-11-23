@@ -46,6 +46,9 @@ BLDCMotor motor = BLDCMotor(7, 4.65, 340);
 // Angle loop acceleration limits (rad/s per s): gentle in MANUAL, quicker while SYNCING
 #define MANUAL_OUTPUT_RAMP 300.0f   // was 140: the handle lagged a pushed carriage
 #define SYNC_OUTPUT_RAMP   400.0f
+// MANUAL: the handle aims this share of the way from where it is to the ODrive. Lower feels softer
+// in the hand; higher follows a pushed carriage more quickly (0.5 was the original halfway).
+#define MANUAL_FOLLOW      (2.0f / 3.0f)
 
 // DRV8311H: one PWM per phase, enabled by its nSLEEP pin
 static BLDCDriver3PWM driver = BLDCDriver3PWM(MOTOR_PWM_A_PIN, MOTOR_PWM_B_PIN, MOTOR_PWM_C_PIN, MOTOR_SLEEP_PIN);
@@ -518,10 +521,10 @@ void motorTask(void *parameters)
     }
     else
     {
-      // MANUAL: aiming halfway to the ODrive gives the handle its soft feel
+      // MANUAL: aiming part of the way to the ODrive (MANUAL_FOLLOW) gives the handle its soft feel
       motor.voltage_limit = 3.0;
       motor.P_angle.output_ramp = MANUAL_OUTPUT_RAMP;
-      motor.move ((odriveposition+motor.shaft_angle)/2);
+      motor.move (motor.shaft_angle + MANUAL_FOLLOW * (odriveposition - motor.shaft_angle));
     }
 
     motorLoopCount = motorLoopCount + 1;
