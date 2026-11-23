@@ -121,6 +121,16 @@ static const char *TAG = "odrive-control";
 #define GAP_STIFF_TURNS      0.15f   // from this gap: fully stiff; an S-curve between the two
 #define STIFFEN_S            0.03f   // the stiffness rises towards the gap's with this time constant
 #define SOFTEN_S             0.25f   // and falls with this one, slower, so it doesn't pump as the gap closes
+// Settling: once the carriage stops being pushed away from the handle, the stiffness builds over
+// time until the carriage reaches the handle, so a small offset (or gravity's sag on an upright
+// rail) doesn't stay springy. Pushing it away again lets go at once; once there, it relaxes.
+#define SETTLE_GAP_TURNS     0.005f  // a gap above this gets settled
+#define SETTLE_DONE_TURNS    0.002f  // within this, it has arrived: the settling relaxes again
+#define SETTLE_DELAY_S       0.5f    // not pushed away for this long before settling starts
+#define SETTLE_S             1.0f    // then up to fully stiff over this long
+#define SETTLE_RELEASE_S     0.05f   // pushed away from the handle: the settling lets go this quickly
+#define CARRIAGE_MOVING_TPS  0.05f   // the carriage faster than this (turns/s) counts as moving
+#define CARRIAGE_VEL_FILTER_S 0.03f  // smoothing of the carriage's speed
 #define GAIN_SEND_STEP       0.01f   // send new gains once the stiffness has moved this much
 
 // Set to 1 to log setpoint timing once a second (diagnosing jerky ODrive motion)
@@ -847,6 +857,10 @@ void odrive_task(void *pvParameters) {
     s_vel_integrator_gain = odrive_setup_config_float("axis0.controller.config.vel_integrator_gain", 0.0f);
     float stiffness = 1.0f;          // the ODrive starts with its saved (stiff) gains
     float stiffness_sent = -1.0f;    // -1: none sent yet
+    float settle = 0.0f;             // the settling stiffness, 0..1
+    float settle_wait_s = 0.0f;      // how long the carriage hasn't been pushed away
+    float carriage_vel = 0.0f;       // turns/s, smoothed
+    float prev_carriage = NAN;
 #endif
 
     // One pass for every handle reading, as soon as it arrives, and at least every LOOP_PERIOD_MS
@@ -1031,14 +1045,40 @@ void odrive_task(void *pvParameters) {
                 x = fminf(fmaxf(x, 0.0f), 1.0f);
                 float want = x * x * (3.0f - 2.0f * x);
 
+                // settling: the carriage's speed, and whether it's being pushed away from the handle
+                float carriage = EncoderEstimate;
+                if (!isnan(prev_carriage) && dt_s > 0.0f) {
+                    float raw = (carriage - prev_carriage) / dt_s;
+                    carriage_vel += (dt_s / (CARRIAGE_VEL_FILTER_S + dt_s)) * (raw - carriage_vel);
+                }
+                prev_carriage = carriage;
+                float signed_gap = controller_target - carriage;   // handle minus carriage
+                bool pushed_away = fabsf(carriage_vel) > CARRIAGE_MOVING_TPS && carriage_vel * signed_gap < 0.0f;
+                if (pushed_away) {
+                    settle_wait_s = 0.0f;
+                    settle += (0.0f - settle) * (dt_s / (SETTLE_RELEASE_S + dt_s));
+                } else if (gap > SETTLE_GAP_TURNS) {
+                    settle_wait_s += dt_s;
+                    if (settle_wait_s >= SETTLE_DELAY_S) {
+                        settle = fminf(settle + dt_s / SETTLE_S, 1.0f);
+                    }
+                } else if (gap < SETTLE_DONE_TURNS) {
+                    settle_wait_s = 0.0f;
+                    settle += (0.0f - settle) * (dt_s / (SOFTEN_S + dt_s));
+                }
+                want = fmaxf(want, settle);
 
-                float tau = (want > stiffness) ? STIFFEN_S : SOFTEN_S;
+                // rising: quickly; falling: slowly, but at once when pushed away (so a push after settling starts soft)
+                float tau = (want > stiffness) ? STIFFEN_S : (pushed_away ? SETTLE_RELEASE_S : SOFTEN_S);
                 stiffness += (want - stiffness) * (dt_s / (tau + dt_s));
                 if (fabsf(want - stiffness) < 0.002f) {
                     stiffness = want;   // settle exactly, so fully soft or stiff is reached and sent
                 }
             } else {
                 stiffness = 1.0f;   // every other state (and easing into MANUAL) stiff, as saved
+                settle = 0.0f;
+                settle_wait_s = 0.0f;
+                prev_carriage = NAN;
             }
             stiffness = fminf(fmaxf(stiffness, 0.0f), 1.0f);
             bool at_end = (stiffness == 0.0f || stiffness == 1.0f) && stiffness != stiffness_sent;
