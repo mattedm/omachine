@@ -113,14 +113,14 @@ static const char *TAG = "odrive-control";
 #define COMPLIANCE_ENABLE    1
 #define SOFT_POS_GAIN        5.0f    // (turns/s) per turn of error
 #define SOFT_VEL_GAIN        0.15f   // Nm per turns/s
-#define HANDLE_VEL_FILTER_S  0.02f   // smoothing of the handle's speed
-#define HANDLE_MOVING_TPS    0.05f   // the handle slower than this (turns/s) counts as still
-#define HELD_GAP_TURNS       0.01f   // the carriage this far from a still handle: the handle is held
-#define HELD_DELAY_S         0.5f    // held this long, the ODrive stiffens...
-#define HELD_STIFFEN_S       0.5f    // ...over this long, bringing the carriage back to the handle
-#define HELD_KEEP_S          1.0f    // and stays stiff this long after, so a steady push doesn't pump
-#define LEAD_STIFFEN_S       0.05f   // the handle leading: stiff this quickly
-#define SOFTEN_S             0.3f    // otherwise back to soft over this long
+// The stiffness follows the gap between the handle and the carriage: soft while they're close
+// (the handle following the carriage freely), rising smoothly as they part (the handle held while
+// the carriage is pushed, or the handle leading), so the carriage is drawn back like a spring that
+// firms up the further it's stretched.
+#define GAP_SOFT_TURNS       0.02f   // up to this gap (turns): fully soft (the handle's normal lag)
+#define GAP_STIFF_TURNS      0.15f   // from this gap: fully stiff; an S-curve between the two
+#define STIFFEN_S            0.03f   // the stiffness rises towards the gap's with this time constant
+#define SOFTEN_S             0.25f   // and falls with this one, slower, so it doesn't pump as the gap closes
 #define GAIN_SEND_STEP       0.01f   // send new gains once the stiffness has moved this much
 
 // Set to 1 to log setpoint timing once a second (diagnosing jerky ODrive motion)
@@ -847,9 +847,6 @@ void odrive_task(void *pvParameters) {
     s_vel_integrator_gain = odrive_setup_config_float("axis0.controller.config.vel_integrator_gain", 0.0f);
     float stiffness = 1.0f;          // the ODrive starts with its saved (stiff) gains
     float stiffness_sent = -1.0f;    // -1: none sent yet
-    float handle_vel = 0.0f;         // turns/s, smoothed
-    float prev_handle = NAN;
-    float held_s = 0.0f, keep_s = 0.0f;
 #endif
 
     // One pass for every handle reading, as soon as it arrives, and at least every LOOP_PERIOD_MS
@@ -858,7 +855,6 @@ void odrive_task(void *pvParameters) {
     // without a fresh reading uses the last one.
     bool have_reading = false;
     TickType_t last_pass = xTaskGetTickCount();
-    TickType_t last_fresh = last_pass;
     for (;;) {
         TickType_t since = xTaskGetTickCount() - last_pass;
         TickType_t wait = since >= pdMS_TO_TICKS(LOOP_PERIOD_MS) ? 0 : pdMS_TO_TICKS(LOOP_PERIOD_MS) - since;
@@ -870,11 +866,6 @@ void odrive_task(void *pvParameters) {
             continue;   // nothing from the handle yet, or an update is being written: leave the ODrive be
         }
         last_pass = xTaskGetTickCount();
-        float fresh_dt_s = 0.0f;   // since the previous fresh reading, on a pass with a fresh one
-        if (fresh) {
-            fresh_dt_s = (float)((last_pass - last_fresh) * portTICK_PERIOD_MS) / 1000.0f;
-            last_fresh = last_pass;
-        }
 #if TIMING_DEBUG
         int64_t loop_start_us = esp_timer_get_time();
 #endif
@@ -1033,42 +1024,21 @@ void odrive_task(void *pvParameters) {
 #if COMPLIANCE_ENABLE
         {
             float dt_s = (float)dt_ms / 1000.0f;
-            // the handle's speed, from fresh readings only (a repeated one isn't the handle stopping)
-            if (fresh && fresh_dt_s > 0.0f) {
-                if (!isnan(prev_handle)) {
-                    float raw = (controller_target - prev_handle) / fresh_dt_s;
-                    handle_vel += (fresh_dt_s / (HANDLE_VEL_FILTER_S + fresh_dt_s)) * (raw - handle_vel);
-                }
-                prev_handle = controller_target;
-            }
             if (control.machine_state == MACHINE_MANUAL && !manual_easing) {
-                float gap = controller_target - EncoderEstimate;   // handle minus ODrive
-                bool moving = fabsf(handle_vel) > HANDLE_MOVING_TPS;
-                if (moving && handle_vel * gap > 0.0f) {
-                    // the handle moving away from the carriage: it's leading, so follow it closely
-                    stiffness += dt_s / LEAD_STIFFEN_S;
-                    held_s = 0.0f;
-                    keep_s = 0.0f;
-                } else if (!moving && fabsf(gap) > HELD_GAP_TURNS) {
-                    // the carriage pushed away from a handle that isn't following: it's held
-                    held_s += dt_s;
-                    if (held_s >= HELD_DELAY_S) {
-                        stiffness += dt_s / HELD_STIFFEN_S;
-                        keep_s = HELD_KEEP_S;
-                    }
-                } else {
-                    // the handle following the carriage, or everything at rest
-                    held_s = 0.0f;
-                    if (keep_s > 0.0f) {
-                        keep_s -= dt_s;
-                    } else {
-                        stiffness -= dt_s / SOFTEN_S;
-                    }
+                // the stiffness the gap asks for: 0 up to GAP_SOFT_TURNS, an S-curve up to 1 at GAP_STIFF_TURNS
+                float gap = fabsf(controller_target - EncoderEstimate);   // handle to carriage, turns
+                float x = (gap - GAP_SOFT_TURNS) / (GAP_STIFF_TURNS - GAP_SOFT_TURNS);
+                x = fminf(fmaxf(x, 0.0f), 1.0f);
+                float want = x * x * (3.0f - 2.0f * x);
+
+
+                float tau = (want > stiffness) ? STIFFEN_S : SOFTEN_S;
+                stiffness += (want - stiffness) * (dt_s / (tau + dt_s));
+                if (fabsf(want - stiffness) < 0.002f) {
+                    stiffness = want;   // settle exactly, so fully soft or stiff is reached and sent
                 }
             } else {
                 stiffness = 1.0f;   // every other state (and easing into MANUAL) stiff, as saved
-                held_s = 0.0f;
-                keep_s = 0.0f;
             }
             stiffness = fminf(fmaxf(stiffness, 0.0f), 1.0f);
             bool at_end = (stiffness == 0.0f || stiffness == 1.0f) && stiffness != stiffness_sent;
