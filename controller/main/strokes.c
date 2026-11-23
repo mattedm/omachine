@@ -320,6 +320,39 @@ float stroke_eval(stroke_id_t stroke, uint32_t millis, float length)
     return s_strokes[stroke].fn(millis, length);
 }
 
+// Pacing: each stroke's time runs at STROKE_TOP_SPEED (strokes.h) / its own top speed, so every
+// stroke peaks at the same speed at the same Speed setting. The top speed is the fastest it covers
+// any 50 ms, measured once from the function itself (so a new stroke is paced too), over STROKE_PACE_SPAN_MS.
+#define STROKE_PACE_STEP_MS   50u
+#define STROKE_PACE_SPAN_MS   32000u  // longer than any stroke's repeat
+
+static float s_pace[STROKE_COUNT];   // 0 until measured
+
+float stroke_pace(stroke_id_t stroke)
+{
+    if (stroke >= STROKE_COUNT) {
+        return 1.0f;
+    }
+    if (s_pace[stroke] == 0.0f) {
+        float peak = 0.0f;
+        float prev = s_strokes[stroke].fn(0, 1.0f);
+        for (uint32_t t = STROKE_PACE_STEP_MS; t <= STROKE_PACE_SPAN_MS; t += STROKE_PACE_STEP_MS) {
+            float now = s_strokes[stroke].fn(t, 1.0f);
+            peak = fmaxf(peak, fabsf(now - prev) * (1000.0f / STROKE_PACE_STEP_MS));
+            prev = now;
+        }
+        s_pace[stroke] = (peak > 0.0f) ? STROKE_TOP_SPEED / peak : 1.0f;
+    }
+    return s_pace[stroke];
+}
+
+void strokes_init(void)
+{
+    for (int i = 0; i < STROKE_COUNT; i++) {
+        stroke_pace((stroke_id_t)i);
+    }
+}
+
 const char *stroke_name(stroke_id_t stroke)
 {
     return stroke < STROKE_COUNT ? s_strokes[stroke].name : "?";

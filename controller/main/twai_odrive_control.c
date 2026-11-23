@@ -826,6 +826,8 @@ void odrive_task(void *pvParameters) {
     request_state_event(BUTTON_ODRIVE_RECOVERED);   // back to INITIAL, if the start-up had a fault shown
     request_state_event(BUTTON_HOMING_STARTED);
 
+    strokes_init();   // measure the strokes' pacing before the loop needs it
+
     // Wait for a position, then find the ends of the rail
     if (xSemaphoreTake(EncoderEstimate_semaphore, -1) == pdTRUE) {
         initial_position = EncoderEstimate;
@@ -1015,7 +1017,8 @@ void odrive_task(void *pvParameters) {
                 }
                 break;
             }
-            stroke_ms += (float)dt_ms * (float)(control.speed_pct + 1) / 20.0f;
+            stroke_ms += (float)dt_ms * (float)(control.speed_pct + 1) / 20.0f
+                         * stroke_pace((stroke_id_t)control.stroke_index);
             offset = stroke_eval((stroke_id_t)control.stroke_index, (uint32_t)stroke_ms, stroke_len);
             target = controller_target + offset;
             break;

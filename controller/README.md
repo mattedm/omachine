@@ -62,8 +62,13 @@ button retries.
 
 The auto strokes are all in [`main/strokes.c`](main/strokes.c), one function each, and the top of
 [`main/strokes.h`](main/strokes.h) explains how to change one or add one. The handle gets the
-names from the controller, so only the controller changes. [`docs/strokes.png`](../docs/strokes.png)
-graphs them all.
+names from the controller, so only the controller changes. Strokes can be written at any pace:
+each is played at its own rate (`stroke_pace()`) so that all of them reach the same top speed at a
+given Speed setting.
+
+[`docs/strokes.png`](../docs/strokes.png) graphs them all as the machine plays them. After
+changing the strokes, redraw it with `python3 tools/plot_strokes.py` (it needs gcc, numpy and
+matplotlib; it compiles `main/strokes.c` for your computer, so new strokes appear by themselves).
 
 Pendulum and Lorenz play back tables made from simulations by
 [`tools/gen_loop_strokes.py`](tools/gen_loop_strokes.py).
