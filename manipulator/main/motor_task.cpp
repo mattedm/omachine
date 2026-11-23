@@ -44,7 +44,7 @@ BLDCMotor motor = BLDCMotor(7, 4.65, 340);
 #define VELOCITY_GAIN_SCALE (9.6f / 4.65f)
 
 // Angle loop acceleration limits (rad/s per s): gentle in MANUAL, quicker while SYNCING
-#define MANUAL_OUTPUT_RAMP 140.0f
+#define MANUAL_OUTPUT_RAMP 300.0f   // was 140: the handle lagged a pushed carriage
 #define SYNC_OUTPUT_RAMP   400.0f
 
 // DRV8311H: one PWM per phase, enabled by its nSLEEP pin
